@@ -6,6 +6,7 @@ from datetime import timedelta
 
 class Booking(models.Model):
     STATUS_CHOICES = (
+        ('Pending', 'Pending'),
         ('Booked', 'Booked'),
         ('Cancelled', 'Cancelled'),
     )

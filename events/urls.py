@@ -1,9 +1,11 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
-from .views import MovieViewSet
+
+from events.models import Event
+from .views import EventViewSet
 
 router = DefaultRouter()
-router.register(r'', MovieViewSet)
+router.register(r'', EventViewSet, basename='events')
 
 urlpatterns = [
     path('', include(router.urls)),
