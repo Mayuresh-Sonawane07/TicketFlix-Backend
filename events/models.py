@@ -32,3 +32,16 @@ class Event(models.Model):
 
     def __str__(self):
         return f"{self.title} ({self.event_type})"
+
+class Review(models.Model):
+    event = models.ForeignKey(Event, on_delete=models.CASCADE, related_name='reviews')
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    rating = models.IntegerField(choices=[(i, i) for i in range(1, 6)])
+    comment = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ('event', 'user')  # one review per user per event
+
+    def __str__(self):
+        return f"{self.user.email} rated {self.event.title} {self.rating}/5"

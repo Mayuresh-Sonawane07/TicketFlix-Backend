@@ -8,6 +8,7 @@ from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from bookings.models import Booking
 from bookings.serializers import BookingSerializer
+from bookings.views import send_booking_confirmation
 from theaters.models import Show, Seat
 from django.db import transaction
 
@@ -37,7 +38,6 @@ class CreateOrderView(APIView):
                 status=status.HTTP_404_NOT_FOUND
             )
 
-        # Check seats not already booked
         already_booked = Booking.objects.filter(
             show_id=show_id,
             status='Booked',
@@ -50,13 +50,11 @@ class CreateOrderView(APIView):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        # Calculate amounts
         num_seats = len(seat_ids)
         ticket_amount = float(show.price) * num_seats
         convenience_fee = round(ticket_amount * settings.CONVENIENCE_FEE_PERCENT / 100, 2)
         total_amount = round(ticket_amount + convenience_fee, 2)
 
-        # Create Razorpay order (amount in paise)
         razorpay_order = client.order.create({
             "amount": int(total_amount * 100),
             "currency": "INR",
@@ -99,7 +97,6 @@ class VerifyPaymentView(APIView):
 
         # Verify signature
         try:
-            msg = f"{razorpay_order_id}|{razorpay_payment_id}"
             generated_signature = hmac.new(
                 key=settings.RAZORPAY_KEY_SECRET.encode(),
                 msg=f"{razorpay_order_id}|{razorpay_payment_id}".encode(),
@@ -117,9 +114,8 @@ class VerifyPaymentView(APIView):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        # Create booking only after successful verification
+        # Create booking after successful verification
         with transaction.atomic():
-            # Double check seats still available
             already_booked = Booking.objects.filter(
                 show_id=show_id,
                 status='Booked',
@@ -141,6 +137,9 @@ class VerifyPaymentView(APIView):
             )
             booking.seats.set(seat_ids)
             booking.save()
+
+        # Send confirmation email (outside transaction so booking is committed first)
+        send_booking_confirmation(booking)
 
         return Response({
             "message": "Payment verified and booking confirmed!",

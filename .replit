@@ -1,6 +1,6 @@
 modules = ["python-3.11", "web"]
 
-run = "python manage.py runserver 0.0.0.0:5000"
+run = "gunicorn ticketflix.wsgi:application --workers 4 --bind 0.0.0.0:5000 --timeout 120 --access-logfile -"
 
 hidden = [".config", ".git", "generated-icon.png"]
 
@@ -14,3 +14,8 @@ externalPort = 80
 
 [env]
 PORT = "5000"
+
+[userenv]
+
+[userenv.shared]
+GOOGLE_CLIENT_ID = "927760185340-sgdf47rqhvvgbub0fh0em4lu98n7355t.apps.googleusercontent.com"

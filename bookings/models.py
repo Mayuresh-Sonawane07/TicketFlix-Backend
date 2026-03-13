@@ -3,6 +3,8 @@ from django.conf import settings
 from theaters.models import Show, Seat
 from django.utils import timezone
 from datetime import timedelta
+import uuid
+
 
 class Booking(models.Model):
     STATUS_CHOICES = (
@@ -17,9 +19,9 @@ class Booking(models.Model):
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='Booked')
     transaction_id = models.CharField(max_length=100, blank=True, null=True)
     booking_time = models.DateTimeField(auto_now_add=True)
+    qr_token = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
 
     def is_cancellable(self):
-        # Users can cancel their booking only if at least 24 hours remain before show_time.
         now = timezone.now()
         time_diff = self.show.show_time - now
         return time_diff >= timedelta(hours=24) and self.status != 'Cancelled'

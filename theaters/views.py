@@ -95,13 +95,20 @@ class ShowViewSet(viewsets.ModelViewSet):
     def available_seats(self, request, pk=None):
         show = self.get_object()
         all_seats = Seat.objects.filter(screen=show.screen)
-        booked_seat_ids = Seat.objects.filter(
+        booked_seat_ids = set(Seat.objects.filter(
             booking__show=show,
-            booking__status='Booked'
-        ).values_list('id', flat=True)
-        available = all_seats.exclude(id__in=booked_seat_ids)
-        serializer = SeatSerializer(available, many=True)
-        return Response(serializer.data)
+            booking__status__in=['Booked', 'Pending']
+        ).values_list('id', flat=True))
+
+        result = []
+        for seat in all_seats:
+            result.append({
+                'id': seat.id,
+                'seat_number': seat.seat_number,
+                'category': seat.category,
+                'is_booked': seat.id in booked_seat_ids,
+            })
+        return Response(result)
 
 
 class SeatViewSet(viewsets.ModelViewSet):

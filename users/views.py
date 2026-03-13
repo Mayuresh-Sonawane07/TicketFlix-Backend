@@ -4,6 +4,9 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from django.contrib.auth import get_user_model, authenticate
 import base64
+import os
+from google.oauth2 import id_token
+from google.auth.transport import requests as google_requests
 
 from .serializers import (
     UserSerializer,
@@ -193,3 +196,33 @@ class ResetPasswordView(APIView):
             serializer.save()
             return Response({"message": "Password reset successfully!"})
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+class GoogleLoginView(APIView):
+    def post(self, request):
+        token = request.data.get('token')
+        if not token:
+            return Response({'error': 'Token is required'}, status=400)
+        try:
+            CLIENT_ID = os.environ.get('GOOGLE_CLIENT_ID')
+            idinfo = id_token.verify_oauth2_token(
+                token, google_requests.Request(), CLIENT_ID
+            )
+            email = idinfo['email']
+            name = idinfo.get('name', '')
+            user, created = User.objects.get_or_create(
+                email=email,
+                defaults={
+                    'first_name': name.split()[0] if name else '',
+                    'last_name': ' '.join(name.split()[1:]) if len(name.split()) > 1 else '',
+                    'is_email_verified': True,
+                    'role': 'Customer',
+                }
+            )
+            if created:
+                user.set_unusable_password()
+                user.save()
+            token_str = base64.b64encode(f"{email}:google-oauth".encode()).decode()
+            return Response({'token': token_str, 'user': UserSerializer(user).data})
+        except ValueError:
+            return Response({'error': 'Invalid Google token'}, status=400)
