@@ -6,7 +6,7 @@ hidden = [".config", ".git", "generated-icon.png"]
 
 [nix]
 channel = "stable-24_05"
-packages = ["python311Packages.pillow"]
+packages = ["cacert", "cargo", "freetype", "lcms2", "libffi", "libiconv", "libimagequant", "libjpeg", "libtiff", "libwebp", "libxcrypt", "openjpeg", "openssl", "pgadmin4", "pkg-config", "python311Packages.pillow", "rustc", "tcl", "tk", "zlib"]
 
 [[ports]]
 localPort = 5000

@@ -198,30 +198,55 @@ class BookingViewSet(viewsets.ModelViewSet):
             return Response({'status': 'Booking cancelled successfully.'})
         return Response({'error': 'Cannot cancel. Less than 24 hours to showtime or already cancelled.'}, status=status.HTTP_400_BAD_REQUEST)
 
-    @action(detail=False, methods=['get'], permission_classes=[AllowAny], url_path='verify/(?P<booking_id>[^/.]+)')
-    def verify(self, request, booking_id=None):
+    @action(detail=True, methods=['get', 'post'], permission_classes=[AllowAny])
+    def verify(self, request, pk=None):
         token = request.query_params.get('token')
         if not token:
-            return Response({"valid": False, "error": "Token required."}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({'valid': False, 'reason': 'No token provided'}, status=400)
+
         try:
-            booking = Booking.objects.select_related(
-                'user', 'show', 'show__event', 'show__screen', 'show__screen__theater'
-            ).prefetch_related('seats').get(id=booking_id, qr_token=token)
+            booking = Booking.objects.get(id=pk, qr_token=token)
         except Booking.DoesNotExist:
-            return Response({"valid": False, "error": "Invalid or tampered QR code."}, status=status.HTTP_404_NOT_FOUND)
-        show = booking.show
-        event = show.event
-        theater = show.screen.theater
+            return Response({'valid': False, 'reason': 'Invalid ticket'}, status=404)
+
+        if booking.status != 'Booked':
+            return Response({
+                'valid': False,
+                'reason': f'Booking is {booking.status}',
+                'status': booking.status,
+                'checked_in': booking.checked_in,
+                'checked_in_time': booking.checked_in_time,
+            })
+
+        # POST = mark as used
+        if request.method == 'POST':
+            if booking.checked_in:
+                return Response({
+                    'valid': False,
+                    'already_used': True,
+                    'reason': 'Ticket already used',
+                    'checked_in_time': booking.checked_in_time,
+                    'event': booking.show.event.title,
+                    'show_time': booking.show.show_time,
+                    'seats': [s.seat_number for s in booking.seats.all()],
+                })
+            from django.utils import timezone
+            booking.checked_in = True
+            booking.checked_in_time = timezone.now()
+            booking.save()
+            return Response({'valid': True, 'marked_used': True, 'checked_in_time': booking.checked_in_time})
+
+        # GET = just verify
         return Response({
-            "valid": booking.status == 'Booked',
-            "status": booking.status,
-            "booking_id": booking.id,
-            "event": event.title,
-            "event_type": event.event_type,
-            "show_time": show.show_time,
-            "venue": theater.name,
-            "city": theater.city,
-            "seats": [s.seat_number for s in booking.seats.all()],
-            "customer": booking.user.get_full_name() or booking.user.email,
-            "amount_paid": str(booking.total_amount),
+            'valid': True,
+            'status': booking.status,
+            'checked_in': booking.checked_in,
+            'checked_in_time': booking.checked_in_time,
+            'event': booking.show.event.title,
+            'event_type': booking.show.event.event_type,
+            'show_time': booking.show.show_time,
+            'venue': booking.show.screen.theater.name,
+            'seats': [s.seat_number for s in booking.seats.all()],
+            'customer': booking.user.get_full_name() or booking.user.email,
+            'total_amount': str(booking.total_amount),
         })

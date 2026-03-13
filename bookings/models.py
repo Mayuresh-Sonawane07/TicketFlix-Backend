@@ -20,6 +20,8 @@ class Booking(models.Model):
     transaction_id = models.CharField(max_length=100, blank=True, null=True)
     booking_time = models.DateTimeField(auto_now_add=True)
     qr_token = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
+    checked_in = models.BooleanField(default=False)
+    checked_in_time = models.DateTimeField(null=True, blank=True)
 
     def is_cancellable(self):
         now = timezone.now()
