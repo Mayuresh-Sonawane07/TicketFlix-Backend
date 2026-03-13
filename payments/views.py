@@ -50,8 +50,23 @@ class CreateOrderView(APIView):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
+        seats = Seat.objects.filter(id__in=seat_ids)
+        screen = show.screen
+        ticket_amount = 0.0
+        seat_breakdown = []
+        for seat in seats:
+            if seat.seat_type == 'Silver':
+                price = float(screen.silver_price)
+            elif seat.seat_type == 'Gold':
+                price = float(screen.gold_price)
+            elif seat.seat_type == 'Platinum':
+                price = float(screen.platinum_price)
+            else:
+                price = float(show.price)
+            ticket_amount += price
+            seat_breakdown.append({'seat': seat.seat_number, 'type': seat.seat_type, 'price': price})
+
         num_seats = len(seat_ids)
-        ticket_amount = float(show.price) * num_seats
         convenience_fee = round(ticket_amount * settings.CONVENIENCE_FEE_PERCENT / 100, 2)
         total_amount = round(ticket_amount + convenience_fee, 2)
 
@@ -72,7 +87,7 @@ class CreateOrderView(APIView):
             "ticket_amount": ticket_amount,
             "convenience_fee": convenience_fee,
             "num_seats": num_seats,
-            "show_price": float(show.price),
+            "seat_breakdown": seat_breakdown,
             "key_id": settings.RAZORPAY_KEY_ID,
             "currency": "INR",
         })
