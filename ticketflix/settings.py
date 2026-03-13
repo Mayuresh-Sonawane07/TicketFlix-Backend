@@ -137,7 +137,7 @@ FRONTEND_URL = 'https://ticketflix-ten.vercel.app'
 CORS_ALLOW_CREDENTIALS = True
 
 # Fast2SMS
-FAST2SMS_API_KEY = 'jLxc7kwzeFBiJRrsDQMK3SG1IvYTOgHnoV8dA9mPay46CENlbXwOyqsNUKcRmF9f1e34T7riZBHn0XhE'  # get from fast2sms.com dashboard
+FAST2SMS_API_KEY = os.environ.get("FAST2SMS_API_KEY")
 
 # Email config
 EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
@@ -145,15 +145,15 @@ EMAIL_HOST = 'smtp.gmail.com'
 EMAIL_PORT = 587
 EMAIL_USE_TLS = True
 EMAIL_USE_SSL = False
-EMAIL_HOST_USER = 'mayureshsonawane1526@gmail.com'        # your gmail
+EMAIL_HOST_USER = os.environ.get("EMAIL_HOST_USER")                # your gmail
 EMAIL_HOST_PASSWORD = os.environ.get('EMAIL_HOST_PASSWORD', '')    # 16-char app password
 DEFAULT_FROM_EMAIL = 'TicketFlix <mayureshsonawane1526@gmail.com>'
 
 MEDIA_URL = '/media/'
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 
-RAZORPAY_KEY_ID = 'rzp_test_SLcbRLrwMPfFj5'
-RAZORPAY_KEY_SECRET = 'IccmzxirNWr22hy2mRK3lruX'  # the secret you copied
+RAZORPAY_KEY_ID = os.environ.get("RAZORPAY_KEY_ID")
+RAZORPAY_KEY_SECRET = os.environ.get("RAZORPAY_KEY_SECRET")
 CONVENIENCE_FEE_PERCENT = 2.75  # 2.75% convenience fee.
 
 SECURE_BROWSER_XSS_FILTER = True
