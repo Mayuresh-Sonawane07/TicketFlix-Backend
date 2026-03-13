@@ -1,6 +1,6 @@
 import random
 import threading
-import resend
+from django.core.mail import send_mail
 from django.conf import settings
 
 def generate_otp():
@@ -8,16 +8,17 @@ def generate_otp():
 
 def _send_email_task(email: str, otp: str, name: str):
     try:
-        resend.api_key = settings.RESEND_API_KEY
-        resend.Emails.send({
-            "from": "TicketFlix <onboarding@resend.dev>",
-            "to": [email],
-            "subject": "Your TicketFlix OTP Code",
-            "text": f"""Hi {name},
-Your OTP for TicketFlix registration is: {otp}
+        send_mail(
+            subject="Your TicketFlix OTP Code",
+            message=f"""Hi {name},
+Your OTP for TicketFlix registration is:
+{otp}
 This OTP is valid for 5 minutes. Do not share it with anyone.
-— TicketFlix Team"""
-        })
+— TicketFlix Team""",
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            recipient_list=[email],
+            fail_silently=False,
+        )
         print(f"OTP sent to {email}: {otp}")
     except Exception as e:
         print(f"Email error: {str(e)}")
