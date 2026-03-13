@@ -131,11 +131,10 @@ CORS_ALLOW_ALL_ORIGINS = DEBUG  # only allow all in dev
 CORS_ALLOWED_ORIGINS = [
     'http://localhost:3000',
     'https://ticketflix-ten.vercel.app',
-    'https://0e620814-4dfc-4257-903b-9cf2164c942d-00-3fr7449523dij.riker.replit.dev',
+    # 'https://0e620814-4dfc-4257-903b-9cf2164c942d-00-3fr7449523dij.riker.replit.dev',
 ]
-CORS_ALLOW_CREDENTIALS = True
-
 FRONTEND_URL = 'https://ticketflix-ten.vercel.app'
+CORS_ALLOW_CREDENTIALS = True
 
 # Fast2SMS
 FAST2SMS_API_KEY = 'jLxc7kwzeFBiJRrsDQMK3SG1IvYTOgHnoV8dA9mPay46CENlbXwOyqsNUKcRmF9f1e34T7riZBHn0XhE'  # get from fast2sms.com dashboard
