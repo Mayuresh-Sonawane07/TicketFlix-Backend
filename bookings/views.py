@@ -247,7 +247,7 @@ class BookingViewSet(viewsets.ModelViewSet):
             'show_time': booking.show.show_time,
             'venue': booking.show.screen.theater.name,
             'city': booking.show.screen.theater.city,
-            'screen': booking.show.screen.name,
+            'screen': f"Screen {booking.show.screen.screen_number}",
             'seats': [s.seat_number for s in booking.seats.all()],
             'customer': booking.user.get_full_name() or booking.user.email,
             'total_amount': str(booking.total_amount),
