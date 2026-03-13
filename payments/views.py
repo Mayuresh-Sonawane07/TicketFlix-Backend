@@ -55,16 +55,16 @@ class CreateOrderView(APIView):
         ticket_amount = 0.0
         seat_breakdown = []
         for seat in seats:
-            if seat.seat_type == 'Silver':
+            if seat.category == 'Silver':
                 price = float(screen.silver_price)
-            elif seat.seat_type == 'Gold':
+            elif seat.category == 'Gold':
                 price = float(screen.gold_price)
-            elif seat.seat_type == 'Platinum':
+            elif seat.category == 'Platinum':
                 price = float(screen.platinum_price)
             else:
                 price = float(show.price)
             ticket_amount += price
-            seat_breakdown.append({'seat': seat.seat_number, 'type': seat.seat_type, 'price': price})
+            seat_breakdown.append({'seat': seat.seat_number, 'type': seat.category, 'price': price})
 
         num_seats = len(seat_ids)
         convenience_fee = round(ticket_amount * settings.CONVENIENCE_FEE_PERCENT / 100, 2)
