@@ -10,6 +10,7 @@ import base64
 from io import BytesIO
 from .models import Booking
 from .serializers import BookingSerializer
+from users.services import send_email_oauth2
 
 
 def generate_qr_base64(booking):
@@ -85,7 +86,7 @@ def send_booking_confirmation(booking):
 </table></td></tr></table>
 </body></html>"""
         plain_message = f"Booking Confirmed - {event.title}\nBooking #{booking.id}\nShow: {show_time}\nVenue: {theater.name}, {theater.city}\nSeats: {seat_numbers}\nAmount: Rs.{booking.total_amount}\nVerify: {verify_url}"
-        send_mail(subject, plain_message, settings.DEFAULT_FROM_EMAIL, [booking.user.email], html_message=html_message, fail_silently=False)
+        send_email_oauth2(booking.user.email, subject, plain_message, html_message)
         print(f"[EMAIL] Confirmation sent to {booking.user.email}")
     except Exception as e:
         print(f"[EMAIL ERROR] {e}")
@@ -129,7 +130,7 @@ def send_cancellation_email(booking):
 </table></td></tr></table>
 </body></html>"""
         plain_message = f"Booking Cancelled - {event.title}\nBooking #{booking.id}\nSeats: {seat_numbers}\nRefund within 5-7 business days."
-        send_mail(subject, plain_message, settings.DEFAULT_FROM_EMAIL, [booking.user.email], html_message=html_message, fail_silently=False)
+        send_email_oauth2(booking.user.email, subject, plain_message, html_message)
         print(f"[EMAIL] Cancellation sent to {booking.user.email}")
     except Exception as e:
         print(f"[EMAIL ERROR] {e}")
