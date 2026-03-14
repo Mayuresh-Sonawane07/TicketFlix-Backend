@@ -1,6 +1,5 @@
 import random
 import threading
-import smtplib
 import base64
 import requests
 from email.mime.text import MIMEText
@@ -22,12 +21,8 @@ def get_access_token():
     return res.json().get('access_token')
 
 
-def send_email_oauth2(to_email, subject, body, html_body=None):
+def send_email_via_gmail_api(to_email, subject, body, html_body=None):
     access_token = get_access_token()
-
-    # Correct XOAUTH2 format
-    auth_string = f"user=mayureshsonawane1526@gmail.com\x01auth=Bearer {access_token}\x01\x01"
-    auth_b64 = base64.b64encode(auth_string.encode()).decode()
 
     msg = MIMEMultipart('alternative')
     msg['Subject'] = subject
@@ -37,16 +32,24 @@ def send_email_oauth2(to_email, subject, body, html_body=None):
     if html_body:
         msg.attach(MIMEText(html_body, 'html'))
 
-    with smtplib.SMTP('smtp.gmail.com', 587) as server:
-        server.ehlo()
-        server.starttls()
-        server.ehlo()
-        server.docmd('AUTH', f'XOAUTH2 {auth_b64}')
-        server.sendmail('mayureshsonawane1526@gmail.com', to_email, msg.as_string())
+    raw = base64.urlsafe_b64encode(msg.as_bytes()).decode()
+
+    response = requests.post(
+        'https://gmail.googleapis.com/gmail/v1/users/me/messages/send',
+        headers={
+            'Authorization': f'Bearer {access_token}',
+            'Content-Type': 'application/json',
+        },
+        json={'raw': raw}
+    )
+    print(f"Gmail API response: {response.status_code} {response.text}")
+    if response.status_code not in (200, 202):
+        raise Exception(f"Gmail API error: {response.text}")
+
 
 def _send_email_task(email: str, otp: str, name: str):
     try:
-        send_email_oauth2(
+        send_email_via_gmail_api(
             to_email=email,
             subject="Your TicketFlix OTP Code",
             body=f"Hi {name},\n\nYour OTP is: {otp}\n\nValid for 5 minutes.\n— TicketFlix"
@@ -61,3 +64,7 @@ def send_otp_email(email: str, otp: str, name: str) -> bool:
     thread.daemon = True
     thread.start()
     return True
+
+
+# Keep this for bookings/views.py to import
+send_email_oauth2 = send_email_via_gmail_api
