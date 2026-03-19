@@ -166,6 +166,7 @@ DEFAULT_FROM_EMAIL = 'TicketFlix <mayureshsonawane1526@gmail.com>'
 GMAIL_CLIENT_ID = '927760185340-f4qjb5mhhrean0en7ags1eh01ip71b3q.apps.googleusercontent.com'
 GMAIL_CLIENT_SECRET = os.environ.get('GMAIL_CLIENT_SECRET', '')
 GMAIL_REFRESH_TOKEN = os.environ.get('GMAIL_REFRESH_TOKEN', '')
+RAZORPAY_WEBHOOK_SECRET = os.environ.get('RAZORPAY_WEBHOOK_SECRET', '')
 
 MEDIA_URL = '/media/'
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media')

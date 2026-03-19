@@ -145,3 +145,104 @@ class VerifyPaymentView(APIView):
             "message": "Payment verified and booking confirmed!",
             "booking": BookingSerializer(booking).data,
         }, status=status.HTTP_201_CREATED)
+
+
+import json
+from rest_framework.permissions import AllowAny
+
+class RazorpayWebhookView(APIView):
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        # Step 1: Verify webhook signature
+        webhook_secret = settings.RAZORPAY_WEBHOOK_SECRET
+        webhook_signature = request.headers.get('X-Razorpay-Signature', '')
+
+        try:
+            generated_signature = hmac.new(
+                key=webhook_secret.encode(),
+                msg=request.body,
+                digestmod=hashlib.sha256
+            ).hexdigest()
+
+            if generated_signature != webhook_signature:
+                print("[WEBHOOK] Invalid signature — possible fake request")
+                return Response({"error": "Invalid signature"}, status=400)
+        except Exception as e:
+            print(f"[WEBHOOK] Signature error: {e}")
+            return Response({"error": "Signature error"}, status=400)
+
+        # Step 2: Parse event
+        try:
+            payload = json.loads(request.body)
+        except json.JSONDecodeError:
+            return Response({"error": "Invalid JSON"}, status=400)
+
+        event = payload.get('event')
+        print(f"[WEBHOOK] Received event: {event}")
+
+        # Step 3: Handle payment.captured
+        if event == 'payment.captured':
+            payment_entity = payload.get('payload', {}).get('payment', {}).get('entity', {})
+            razorpay_payment_id = payment_entity.get('id')
+            razorpay_order_id = payment_entity.get('order_id')
+            notes = payment_entity.get('notes', {})
+
+            show_id = notes.get('show_id')
+            seat_ids_str = notes.get('seat_ids', '')
+            user_id = notes.get('user_id')
+
+            if not all([show_id, seat_ids_str, user_id]):
+                print("[WEBHOOK] Missing notes data")
+                return Response({"status": "ok"})
+
+            # Check if booking already exists (created by frontend verify)
+            if Booking.objects.filter(transaction_id=razorpay_payment_id).exists():
+                print(f"[WEBHOOK] Booking already exists for payment {razorpay_payment_id}")
+                return Response({"status": "ok"})
+
+            # Create booking if not exists (fallback for browser crash cases)
+            try:
+                seat_ids = [int(sid) for sid in seat_ids_str.split(',') if sid.strip()]
+                from django.contrib.auth import get_user_model
+                User = get_user_model()
+                user = User.objects.get(id=int(user_id))
+
+                # Calculate total amount from Razorpay (in paise, convert to rupees)
+                total_amount = payment_entity.get('amount', 0) / 100
+
+                with transaction.atomic():
+                    already_booked = Booking.objects.filter(
+                        show_id=show_id,
+                        status='Booked',
+                        seats__in=seat_ids
+                    ).exists()
+
+                    if already_booked:
+                        print(f"[WEBHOOK] Seats already booked for show {show_id}")
+                        return Response({"status": "ok"})
+
+                    booking = Booking.objects.create(
+                        user=user,
+                        show_id=show_id,
+                        total_amount=total_amount,
+                        status='Booked',
+                        transaction_id=razorpay_payment_id,
+                    )
+                    booking.seats.set(seat_ids)
+                    booking.save()
+
+                print(f"[WEBHOOK] Booking {booking.id} created via webhook for payment {razorpay_payment_id}")
+                send_booking_confirmation(booking)
+
+            except Exception as e:
+                print(f"[WEBHOOK] Error creating booking: {e}")
+
+        # Step 4: Handle payment.failed
+        elif event == 'payment.failed':
+            payment_entity = payload.get('payload', {}).get('payment', {}).get('entity', {})
+            print(f"[WEBHOOK] Payment failed: {payment_entity.get('id')} — releasing any pending seats")
+            # Pending bookings are auto-released by release_expired_pending_bookings()
+            # so no action needed here
+
+        return Response({"status": "ok"})
