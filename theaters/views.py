@@ -94,6 +94,8 @@ class ShowViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['get'])
     def available_seats(self, request, pk=None):
+        from bookings.views import release_expired_pending_bookings
+        release_expired_pending_bookings()  # ← add this
         show = self.get_object()
         all_seats = Seat.objects.filter(screen=show.screen)
         booked_seat_ids = set(Seat.objects.filter(

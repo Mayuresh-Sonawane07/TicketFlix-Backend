@@ -12,6 +12,18 @@ from .models import Booking
 from .serializers import BookingSerializer
 from users.services import send_email_oauth2
 
+def release_expired_pending_bookings():
+    from django.utils import timezone
+    from datetime import timedelta
+    expiry_time = timezone.now() - timedelta(minutes=5)
+    expired = Booking.objects.filter(
+        status='Pending',
+        booking_time__lt=expiry_time
+    )
+    count = expired.count()
+    if count > 0:
+        print(f"[SEAT LOCK] Releasing {count} expired pending bookings")
+        expired.delete()
 
 def generate_qr_base64(booking):
     verify_url = f"{settings.FRONTEND_URL}/verify/{booking.id}?token={booking.qr_token}"

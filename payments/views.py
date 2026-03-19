@@ -30,6 +30,9 @@ class CreateOrderView(APIView):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
+        from bookings.views import release_expired_pending_bookings
+        release_expired_pending_bookings()
+
         try:
             show = Show.objects.get(id=show_id)
         except Show.DoesNotExist:
