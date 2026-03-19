@@ -7,6 +7,7 @@ import base64
 import os
 from google.oauth2 import id_token
 from google.auth.transport import requests as google_requests
+from users.throttles import OTPThrottle, LoginThrottle
 
 from .serializers import (
     UserSerializer,
@@ -26,6 +27,8 @@ class UserViewSet(viewsets.ModelViewSet):
 
 
 class RegisterInitView(APIView):
+    throttle_classes = [OTPThrottle]
+
     def post(self, request):
         serializer = RegisterInitSerializer(data=request.data)
         if serializer.is_valid():
@@ -43,6 +46,8 @@ class RegisterInitView(APIView):
 
 
 class VerifyOTPView(APIView):
+    throttle_classes = [OTPThrottle]
+
     def post(self, request):
         serializer = VerifyOTPSerializer(data=request.data)
         if serializer.is_valid():
@@ -55,6 +60,8 @@ class VerifyOTPView(APIView):
 
 
 class LoginView(APIView):
+    throttle_classes = [LoginThrottle]
+
     def post(self, request):
         serializer = LoginSerializer(data=request.data)
         if serializer.is_valid():
@@ -138,6 +145,8 @@ class DeleteAccountView(APIView):
 
 
 class ResendOTPView(APIView):
+    throttle_classes = [OTPThrottle]
+
     def post(self, request):
         from .models import OTPVerification
         from .services import generate_otp, send_otp_email
@@ -149,7 +158,6 @@ class ResendOTPView(APIView):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        # Get the latest unused OTP record for this email
         try:
             record = OTPVerification.objects.filter(
                 email=email, is_used=False
@@ -160,7 +168,6 @@ class ResendOTPView(APIView):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        # Generate new OTP
         new_otp = generate_otp()
         record.otp = new_otp
         from django.utils import timezone
@@ -175,7 +182,10 @@ class ResendOTPView(APIView):
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
 
+
 class ForgotPasswordView(APIView):
+    throttle_classes = [OTPThrottle]
+
     def post(self, request):
         serializer = ForgotPasswordSerializer(data=request.data)
         if serializer.is_valid():
@@ -190,6 +200,8 @@ class ForgotPasswordView(APIView):
 
 
 class ResetPasswordView(APIView):
+    throttle_classes = [LoginThrottle]
+
     def post(self, request):
         serializer = ResetPasswordSerializer(data=request.data)
         if serializer.is_valid():
@@ -199,6 +211,8 @@ class ResetPasswordView(APIView):
 
 
 class GoogleLoginView(APIView):
+    throttle_classes = [LoginThrottle]
+
     def post(self, request):
         token = request.data.get('token')
         if not token:

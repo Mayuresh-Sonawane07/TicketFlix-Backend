@@ -126,6 +126,17 @@ REST_FRAMEWORK = {
     ),
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
     'PAGE_SIZE': 10,
+    'DEFAULT_THROTTLE_CLASSES': [
+        'rest_framework.throttling.AnonRateThrottle',
+        'rest_framework.throttling.UserRateThrottle',
+    ],
+    'DEFAULT_THROTTLE_RATES': {
+        'anon': '100/day',       # unauthenticated users
+        'user': '1000/day',      # authenticated users
+        'otp': '5/hour',         # OTP sending
+        'login': '10/hour',      # login attempts
+        'payment': '20/hour',    # payment endpoints
+    }
 }
 
 # 🔥 CORS
