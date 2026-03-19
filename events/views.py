@@ -5,6 +5,7 @@ from rest_framework.response import Response
 from .models import Event, Review
 from .serializers import EventSerializer, ReviewSerializer
 from .permissions import IsVenueOwner
+from django.utils import timezone
 
 class EventViewSet(viewsets.ModelViewSet):
     queryset = Event.objects.all()
