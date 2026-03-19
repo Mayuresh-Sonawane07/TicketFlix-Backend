@@ -10,6 +10,7 @@ django-anymail==14.0
 django-cloudinary-storage==0.3.0
 django-cors-headers==4.9.0
 djangorestframework==3.16.1
+djangorestframework_simplejwt==5.5.1
 fast2sms==1.0.0
 google-auth==2.49.0
 gunicorn==25.1.0
@@ -20,6 +21,7 @@ psycopg2-binary==2.9.11
 pyasn1==0.6.2
 pyasn1_modules==0.4.2
 pycparser==3.0
+PyJWT==2.12.1
 qrcode==8.2
 razorpay==2.0.0
 requests==2.32.5

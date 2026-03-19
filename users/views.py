@@ -3,11 +3,11 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from django.contrib.auth import get_user_model, authenticate
-import base64
 import os
 from google.oauth2 import id_token
 from google.auth.transport import requests as google_requests
 from users.throttles import OTPThrottle, LoginThrottle
+from rest_framework_simplejwt.tokens import RefreshToken
 
 from .serializers import (
     UserSerializer,
@@ -19,6 +19,14 @@ from .serializers import (
 )
 
 User = get_user_model()
+
+
+def get_tokens_for_user(user):
+    refresh = RefreshToken.for_user(user)
+    return {
+        'access': str(refresh.access_token),
+        'refresh': str(refresh),
+    }
 
 
 class UserViewSet(viewsets.ModelViewSet):
@@ -52,8 +60,14 @@ class VerifyOTPView(APIView):
         serializer = VerifyOTPSerializer(data=request.data)
         if serializer.is_valid():
             user = serializer.save()
+            tokens = get_tokens_for_user(user)
             return Response(
-                {"message": "Registration successful!", "user": UserSerializer(user).data},
+                {
+                    "message": "Registration successful!",
+                    "token": tokens['access'],
+                    "refresh": tokens['refresh'],
+                    "user": UserSerializer(user).data
+                },
                 status=status.HTTP_201_CREATED
             )
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
@@ -73,8 +87,12 @@ class LoginView(APIView):
                     {"error": "Invalid email or password."},
                     status=status.HTTP_401_UNAUTHORIZED
                 )
-            token = base64.b64encode(f"{email}:{password}".encode()).decode()
-            return Response({"token": token, "user": UserSerializer(user).data})
+            tokens = get_tokens_for_user(user)
+            return Response({
+                "token": tokens['access'],
+                "refresh": tokens['refresh'],
+                "user": UserSerializer(user).data
+            })
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
@@ -236,7 +254,11 @@ class GoogleLoginView(APIView):
             if created:
                 user.set_unusable_password()
                 user.save()
-            token_str = base64.b64encode(f"{email}:google-oauth".encode()).decode()
-            return Response({'token': token_str, 'user': UserSerializer(user).data})
+            tokens = get_tokens_for_user(user)
+            return Response({
+                'token': tokens['access'],
+                'refresh': tokens['refresh'],
+                'user': UserSerializer(user).data
+            })
         except ValueError:
             return Response({'error': 'Invalid Google token'}, status=400)

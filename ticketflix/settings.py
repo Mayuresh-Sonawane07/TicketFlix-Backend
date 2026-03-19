@@ -6,7 +6,7 @@ from pathlib import Path
 import dj_database_url
 import os
 import cloudinary
-
+from datetime import timedelta
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -34,9 +34,9 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-
+    
     'rest_framework',
-
+    'rest_framework_simplejwt.token_blacklist',
     'users',
     'events',
     'theaters',
@@ -131,7 +131,7 @@ AUTH_USER_MODEL = 'users.User'
 # 🔥 REST FRAMEWORK CONFIG
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
-        'users.authentication.JWTAuthentication',
+        'rest_framework_simplejwt.authentication.JWTAuthentication',
     ),
     'DEFAULT_PERMISSION_CLASSES': (
         'rest_framework.permissions.AllowAny',
@@ -149,6 +149,14 @@ REST_FRAMEWORK = {
         'login': '10/hour',      # login attempts
         'payment': '20/hour',    # payment endpoints
     }
+}
+
+SIMPLE_JWT = {
+    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=60),
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=7),
+    'ROTATE_REFRESH_TOKENS': True,
+    'BLACKLIST_AFTER_ROTATION': True,
+    'AUTH_HEADER_TYPES': ('Bearer',),
 }
 
 # 🔥 CORS
