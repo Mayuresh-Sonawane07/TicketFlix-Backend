@@ -3,11 +3,13 @@ Django settings for ticketflix project.
 """
 
 from pathlib import Path
+from datetime import timedelta
 import dj_database_url
 import os
-import cloudinary
-from datetime import timedelta
 
+# ─────────────────────────────────────────
+# BASE
+# ─────────────────────────────────────────
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 SECRET_KEY = os.environ.get('SECRET_KEY', 'fallback-only-for-local-dev')
@@ -18,13 +20,18 @@ ALLOWED_HOSTS = os.environ.get('ALLOWED_HOSTS', 'localhost').split(',') + [
     'localhost', '127.0.0.1', '0.0.0.0',
     '.replit.dev', '.repl.co',
     'ticketflix-ten.vercel.app',
+    'web-production-cf420.up.railway.app',
 ]
 
 CSRF_TRUSTED_ORIGINS = [
     "https://*.replit.dev",
     "https://ticketflix-ten.vercel.app",
+    "https://web-production-cf420.up.railway.app",
 ]
 
+# ─────────────────────────────────────────
+# APPS
+# ─────────────────────────────────────────
 INSTALLED_APPS = [
     'corsheaders',
 
@@ -33,11 +40,14 @@ INSTALLED_APPS = [
     'django.contrib.contenttypes',
     'django.contrib.sessions',
     'django.contrib.messages',
-    'cloudinary_storage',
+
+    'cloudinary_storage',           # ← must be BEFORE staticfiles
     'django.contrib.staticfiles',
-    'cloudinary',          
+    'cloudinary',                   # ← must be AFTER staticfiles
+
     'rest_framework',
     'rest_framework_simplejwt.token_blacklist',
+
     'users',
     'events',
     'theaters',
@@ -45,8 +55,11 @@ INSTALLED_APPS = [
     'payments',
 ]
 
+# ─────────────────────────────────────────
+# MIDDLEWARE
+# ─────────────────────────────────────────
 MIDDLEWARE = [
-    'corsheaders.middleware.CorsMiddleware',  # must be at top
+    'corsheaders.middleware.CorsMiddleware',        # must be at very top
 
     'django.middleware.security.SecurityMiddleware',
     'whitenoise.middleware.WhiteNoiseMiddleware',
@@ -59,21 +72,11 @@ MIDDLEWARE = [
 ]
 
 ROOT_URLCONF = 'ticketflix.urls'
+WSGI_APPLICATION = 'ticketflix.wsgi.application'
 
-LOGGING = {
-    'version': 1,
-    'disable_existing_loggers': False,
-    'handlers': {
-        'console': {
-            'class': 'logging.StreamHandler',
-        },
-    },
-    'root': {
-        'handlers': ['console'],
-        'level': 'INFO',
-    },
-}
-
+# ─────────────────────────────────────────
+# TEMPLATES
+# ─────────────────────────────────────────
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
@@ -89,8 +92,9 @@ TEMPLATES = [
     },
 ]
 
-WSGI_APPLICATION = 'ticketflix.wsgi.application'
-
+# ─────────────────────────────────────────
+# DATABASE
+# ─────────────────────────────────────────
 DATABASES = {
     'default': dj_database_url.config(
         default=os.environ.get('DATABASE_URL'),
@@ -99,6 +103,11 @@ DATABASES = {
     )
 }
 
+# ─────────────────────────────────────────
+# AUTH
+# ─────────────────────────────────────────
+AUTH_USER_MODEL = 'users.User'
+
 AUTH_PASSWORD_VALIDATORS = [
     {'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator'},
     {'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator'},
@@ -106,28 +115,9 @@ AUTH_PASSWORD_VALIDATORS = [
     {'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator'},
 ]
 
-CLOUDINARY_STORAGE = {
-    'CLOUD_NAME': os.environ.get('CLOUD_NAME'),
-    'API_KEY': os.environ.get('API_KEY'),
-    'API_SECRET': os.environ.get('API_SECRET'),
-}
-
-DEFAULT_FILE_STORAGE = 'cloudinary_storage.storage.MediaCloudinaryStorage'
-
-LANGUAGE_CODE = 'en-us'
-TIME_ZONE = 'UTC'
-USE_I18N = True
-USE_TZ = True
-
-STATIC_URL = 'static/'
-STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
-STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
-
-DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
-
-AUTH_USER_MODEL = 'users.User'
-
-# 🔥 REST FRAMEWORK CONFIG
+# ─────────────────────────────────────────
+# REST FRAMEWORK + JWT
+# ─────────────────────────────────────────
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
         'rest_framework_simplejwt.authentication.JWTAuthentication',
@@ -142,11 +132,11 @@ REST_FRAMEWORK = {
         'rest_framework.throttling.UserRateThrottle',
     ],
     'DEFAULT_THROTTLE_RATES': {
-        'anon': '100/day',       # unauthenticated users
-        'user': '1000/day',      # authenticated users
-        'otp': '5/hour',         # OTP sending
-        'login': '10/hour',      # login attempts
-        'payment': '20/hour',    # payment endpoints
+        'anon': '100/day',
+        'user': '1000/day',
+        'otp': '5/hour',
+        'login': '10/hour',
+        'payment': '20/hour',
     }
 }
 
@@ -158,20 +148,42 @@ SIMPLE_JWT = {
     'AUTH_HEADER_TYPES': ('Bearer',),
 }
 
-# 🔥 CORS
-CORS_ALLOW_ALL_ORIGINS = DEBUG  # only allow all in dev
+# ─────────────────────────────────────────
+# CORS
+# ─────────────────────────────────────────
+CORS_ALLOW_ALL_ORIGINS = DEBUG
 CORS_ALLOWED_ORIGINS = [
     'http://localhost:3000',
     'https://ticketflix-ten.vercel.app',
-    # 'https://0e620814-4dfc-4257-903b-9cf2164c942d-00-3fr7449523dij.riker.replit.dev',
 ]
 FRONTEND_URL = 'https://ticketflix-ten.vercel.app'
 CORS_ALLOW_CREDENTIALS = True
 
-# Fast2SMS
-FAST2SMS_API_KEY = os.environ.get("FAST2SMS_API_KEY")
+# ─────────────────────────────────────────
+# STATIC FILES (whitenoise)
+# ─────────────────────────────────────────
+STATIC_URL = 'static/'
+STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
+STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesResponse'
 
-# Email config
+# ─────────────────────────────────────────
+# MEDIA FILES → CLOUDINARY
+# ─────────────────────────────────────────
+CLOUDINARY_STORAGE = {
+    'CLOUD_NAME': os.environ.get('CLOUD_NAME'),       # matches your Railway var
+    'API_KEY': os.environ.get('API_KEY'),             # matches your Railway var
+    'API_SECRET': os.environ.get('API_SECRET'),       # matches your Railway var
+}
+
+DEFAULT_FILE_STORAGE = 'cloudinary_storage.storage.MediaCloudinaryStorage'
+
+# Keep these for local dev fallback only — not used in production
+MEDIA_URL = '/media/'
+MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
+
+# ─────────────────────────────────────────
+# EMAIL → Gmail OAuth2 (no SMTP)
+# ─────────────────────────────────────────
 EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
 EMAIL_HOST = 'smtp.gmail.com'
 EMAIL_PORT = 587
@@ -181,29 +193,66 @@ EMAIL_HOST_USER = 'mayureshsonawane1526@gmail.com'
 EMAIL_HOST_PASSWORD = os.environ.get('EMAIL_HOST_PASSWORD', '')
 DEFAULT_FROM_EMAIL = 'TicketFlix <mayureshsonawane1526@gmail.com>'
 
-# Gmail OAuth2
-GMAIL_CLIENT_ID = '927760185340-f4qjb5mhhrean0en7ags1eh01ip71b3q.apps.googleusercontent.com'
-GMAIL_CLIENT_SECRET = os.environ.get('GMAIL_CLIENT_SECRET', '')
+# Gmail REST API (used by services.py instead of SMTP)
+GMAIL_CLIENT_ID = os.environ.get('GOOGLE_CLIENT_ID', '')
+GMAIL_CLIENT_SECRET = os.environ.get('GOOGLE_CLIENT_SECRET', '')
 GMAIL_REFRESH_TOKEN = os.environ.get('GMAIL_REFRESH_TOKEN', '')
+
+# ─────────────────────────────────────────
+# PAYMENTS
+# ─────────────────────────────────────────
+RAZORPAY_KEY_ID = os.environ.get('RAZORPAY_KEY_ID')
+RAZORPAY_KEY_SECRET = os.environ.get('RAZORPAY_KEY_SECRET')
 RAZORPAY_WEBHOOK_SECRET = os.environ.get('RAZORPAY_WEBHOOK_SECRET', '')
+CONVENIENCE_FEE_PERCENT = 2.75
 
-MEDIA_URL = '/media/'
-MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
+# ─────────────────────────────────────────
+# GOOGLE LOGIN
+# ─────────────────────────────────────────
+GOOGLE_CLIENT_ID = os.environ.get('GOOGLE_CLIENT_ID', '')
 
-RAZORPAY_KEY_ID = os.environ.get("RAZORPAY_KEY_ID")
-RAZORPAY_KEY_SECRET = os.environ.get("RAZORPAY_KEY_SECRET")
-CONVENIENCE_FEE_PERCENT = 2.75  # 2.75% convenience fee.
+# ─────────────────────────────────────────
+# FAST2SMS
+# ─────────────────────────────────────────
+FAST2SMS_API_KEY = os.environ.get('FAST2SMS_API_KEY')
 
+# ─────────────────────────────────────────
+# INTERNATIONALISATION
+# ─────────────────────────────────────────
+LANGUAGE_CODE = 'en-us'
+TIME_ZONE = 'UTC'
+USE_I18N = True
+USE_TZ = True
+
+DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+# ─────────────────────────────────────────
+# LOGGING
+# ─────────────────────────────────────────
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'handlers': {
+        'console': {
+            'class': 'logging.StreamHandler',
+        },
+    },
+    'root': {
+        'handlers': ['console'],
+        'level': 'INFO',
+    },
+}
+
+# ─────────────────────────────────────────
+# SECURITY (production hardening)
+# ─────────────────────────────────────────
 SECURE_BROWSER_XSS_FILTER = True
 SECURE_CONTENT_TYPE_NOSNIFF = True
 X_FRAME_OPTIONS = 'DENY'
 SESSION_COOKIE_SECURE = not DEBUG
 CSRF_COOKIE_SECURE = not DEBUG
-
 SECURE_SSL_REDIRECT = not DEBUG
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
-SECURE_HSTS_SECONDS = 31536000  # 1 year
+SECURE_HSTS_SECONDS = 31536000
 SECURE_HSTS_INCLUDE_SUBDOMAINS = True
 SECURE_HSTS_PRELOAD = True
-
-WHITENOISE_ROOT = os.path.join(BASE_DIR, 'media')
