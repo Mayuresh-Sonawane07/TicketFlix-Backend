@@ -5,11 +5,18 @@ from rest_framework.response import Response
 from .models import Event, Review
 from .serializers import EventSerializer, ReviewSerializer
 from .permissions import IsVenueOwner
-from django.utils import timezone
 
 class EventViewSet(viewsets.ModelViewSet):
-    queryset = Event.objects.all()
     serializer_class = EventSerializer
+
+    def get_queryset(self):
+        queryset = Event.objects.all().order_by('id')
+        city = self.request.query_params.get('city')
+        if city:
+            queryset = queryset.filter(
+                show__screen__theater__city__iexact=city
+            ).distinct()
+        return queryset
 
     def get_permissions(self):
         if self.request.method in ['GET', 'HEAD', 'OPTIONS']:
@@ -21,9 +28,19 @@ class EventViewSet(viewsets.ModelViewSet):
     def get_serializer_context(self):
         return {'request': self.request}
 
+    @action(detail=False, methods=['get'], permission_classes=[AllowAny])
+    def cities(self, request):
+        """Returns list of unique cities that have active shows."""
+        from theaters.models import Theater
+        from django.utils import timezone
+        cities = Theater.objects.filter(
+            screens__shows__show_time__gte=timezone.now()
+        ).values_list('city', flat=True).distinct().order_by('city')
+        return Response(sorted(set(c.strip().title() for c in cities)))
+
     @action(detail=False, methods=['get'], permission_classes=[IsVenueOwner])
     def my_events(self, request):
-        events = Event.objects.filter(created_by=request.user)
+        events = Event.objects.filter(created_by=request.user).order_by('id')
         serializer = self.get_serializer(events, many=True)
         return Response(serializer.data)
 
@@ -37,7 +54,6 @@ class EventViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
     def add_review(self, request, pk=None):
         event = self.get_object()
-        # Check if user already reviewed
         if Review.objects.filter(event=event, user=request.user).exists():
             return Response(
                 {'error': 'You have already reviewed this event.'},
@@ -57,4 +73,7 @@ class EventViewSet(viewsets.ModelViewSet):
             review.delete()
             return Response({'message': 'Review deleted.'})
         except Review.DoesNotExist:
-            return Response({'error': 'Review not found.'}, status=status.HTTP_404_NOT_FOUND)
+            return Response(
+                {'error': 'Review not found.'},
+                status=status.HTTP_404_NOT_FOUND
+            )
