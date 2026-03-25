@@ -25,8 +25,10 @@ class CreateOrderView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
+        print("=== CREATE ORDER START ===")
         show_id = request.data.get('show')
         seat_ids = request.data.get('seats', [])
+        print(f"show_id: {show_id}, seat_ids: {seat_ids}")
 
         if not show_id or not seat_ids:
             return Response({"error": "Show and seats are required."}, status=400)
@@ -36,7 +38,6 @@ class CreateOrderView(APIView):
         except Show.DoesNotExist:
             return Response({"error": "Show not found."}, status=404)
 
-        # Check if already booked
         if Booking.objects.filter(
             show_id=show_id,
             status='Booked',
@@ -49,17 +50,30 @@ class CreateOrderView(APIView):
         convenience_fee = round(ticket_amount * settings.CONVENIENCE_FEE_PERCENT / 100, 2)
         total_amount = round(ticket_amount + convenience_fee, 2)
 
-        razorpay_order = client.order.create({
-            "amount": int(total_amount * 100),
-            "currency": "INR",
-            "payment_capture": 1,
-            "notes": {
-                "show_id": str(show_id),
-                "seat_ids": ",".join(map(str, seat_ids)),
-                "user_id": str(request.user.id),
-            }
-        })
+        print("=== CALLING RAZORPAY ===")
+        try:
+            razorpay_order = client.order.create({
+                "amount": int(total_amount * 100),
+                "currency": "INR",
+                "payment_capture": 1,
+                "notes": {
+                    "show_id": str(show_id),
+                    "seat_ids": ",".join(map(str, seat_ids)),
+                    "user_id": str(request.user.id),
+                }
+            })
+            print(f"=== RAZORPAY SUCCESS: {razorpay_order['id']} ===")
+        except requests.exceptions.Timeout:
+            print("=== RAZORPAY TIMEOUT ===")
+            return Response({"error": "Payment service timeout. Please try again."}, status=503)
+        except requests.exceptions.ConnectionError as e:
+            print(f"=== RAZORPAY CONNECTION ERROR: {e} ===")
+            return Response({"error": "Payment service unreachable. Please try again."}, status=503)
+        except Exception as e:
+            print(f"=== RAZORPAY FAILED: {e} ===")
+            return Response({"error": "Failed to create payment order."}, status=500)
 
+        print("=== CREATE ORDER DONE ===")
         return Response({
             "order_id": razorpay_order["id"],
             "amount": total_amount,
@@ -70,8 +84,7 @@ class CreateOrderView(APIView):
             "key_id": settings.RAZORPAY_KEY_ID,
             "currency": "INR",
         })
-
-
+        
 # ✅ VERIFY PAYMENT (ONLY VERIFY — NO BOOKING)
 class VerifyPaymentView(APIView):
     permission_classes = [IsAuthenticated]
