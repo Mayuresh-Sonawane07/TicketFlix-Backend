@@ -163,3 +163,17 @@ class RazorpayWebhookView(APIView):
             send_booking_confirmation(booking)
 
         return Response({"status": "ok"})
+
+class TestRazorpayView(APIView):
+    permission_classes = [AllowAny]
+    def get(self, request):
+        import requests, socket
+        try:
+            r = requests.get("https://api.razorpay.com", timeout=5)
+            return Response({
+                "reachable": True,
+                "code": r.status_code,
+                "server_ip": socket.gethostbyname(socket.gethostname())
+            })
+        except Exception as e:
+            return Response({"reachable": False, "error": str(e)})
