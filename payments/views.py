@@ -1,22 +1,26 @@
 import razorpay
 import hmac
 import hashlib
+import json
 from django.conf import settings
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import IsAuthenticated, AllowAny
+from django.db import transaction
+from django.contrib.auth import get_user_model
+
 from bookings.models import Booking
 from bookings.serializers import BookingSerializer
 from bookings.views import send_booking_confirmation
-from theaters.models import Show, Seat
-from django.db import transaction
+from theaters.models import Show
 
 client = razorpay.Client(
     auth=(settings.RAZORPAY_KEY_ID, settings.RAZORPAY_KEY_SECRET)
 )
 
 
+# ✅ CREATE ORDER
 class CreateOrderView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -25,30 +29,20 @@ class CreateOrderView(APIView):
         seat_ids = request.data.get('seats', [])
 
         if not show_id or not seat_ids:
-            return Response(
-                {"error": "Show and seats are required."},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+            return Response({"error": "Show and seats are required."}, status=400)
 
         try:
             show = Show.objects.get(id=show_id)
         except Show.DoesNotExist:
-            return Response(
-                {"error": "Show not found."},
-                status=status.HTTP_404_NOT_FOUND
-            )
+            return Response({"error": "Show not found."}, status=404)
 
-        already_booked = Booking.objects.filter(
+        # Check if already booked
+        if Booking.objects.filter(
             show_id=show_id,
             status='Booked',
             seats__in=seat_ids
-        ).exists()
-
-        if already_booked:
-            return Response(
-                {"error": "One or more seats are already booked."},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+        ).exists():
+            return Response({"error": "Seats already booked."}, status=400)
 
         num_seats = len(seat_ids)
         ticket_amount = float(show.price) * num_seats
@@ -78,6 +72,7 @@ class CreateOrderView(APIView):
         })
 
 
+# ✅ VERIFY PAYMENT (ONLY VERIFY — NO BOOKING)
 class VerifyPaymentView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -85,17 +80,10 @@ class VerifyPaymentView(APIView):
         razorpay_order_id = request.data.get('razorpay_order_id')
         razorpay_payment_id = request.data.get('razorpay_payment_id')
         razorpay_signature = request.data.get('razorpay_signature')
-        show_id = request.data.get('show')
-        seat_ids = request.data.get('seats', [])
-        total_amount = request.data.get('total_amount')
 
         if not all([razorpay_order_id, razorpay_payment_id, razorpay_signature]):
-            return Response(
-                {"error": "Payment details missing."},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+            return Response({"error": "Payment details missing."}, status=400)
 
-        # Verify signature
         try:
             generated_signature = hmac.new(
                 key=settings.RAZORPAY_KEY_SECRET.encode(),
@@ -104,145 +92,74 @@ class VerifyPaymentView(APIView):
             ).hexdigest()
 
             if generated_signature != razorpay_signature:
-                return Response(
-                    {"error": "Payment verification failed. Invalid signature."},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-        except Exception:
-            return Response(
-                {"error": "Signature verification error."},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+                return Response({"error": "Invalid payment signature."}, status=400)
 
-        # Create booking after successful verification
-        with transaction.atomic():
-            already_booked = Booking.objects.filter(
-                show_id=show_id,
-                status='Booked',
-                seats__in=seat_ids
-            ).exists()
+        except Exception as e:
+            print("VERIFY ERROR:", str(e))
+            return Response({"error": "Verification failed."}, status=400)
 
-            if already_booked:
-                return Response(
-                    {"error": "Seats were booked by someone else. Please select different seats."},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-
-            booking = Booking.objects.create(
-                user=request.user,
-                show_id=show_id,
-                total_amount=total_amount,
-                status='Booked',
-                transaction_id=razorpay_payment_id,
-            )
-            booking.seats.set(seat_ids)
-            booking.save()
-
-        # Send confirmation email (outside transaction so booking is committed first)
-        send_booking_confirmation(booking)
-
-        return Response({
-            "message": "Payment verified and booking confirmed!",
-            "booking": BookingSerializer(booking).data,
-        }, status=status.HTTP_201_CREATED)
+        return Response({"message": "Payment verified successfully!"}, status=200)
 
 
-import json
-from rest_framework.permissions import AllowAny
-
+# ✅ WEBHOOK (CREATES BOOKING)
 class RazorpayWebhookView(APIView):
     permission_classes = [AllowAny]
 
     def post(self, request):
-        # Step 1: Verify webhook signature
         webhook_secret = settings.RAZORPAY_WEBHOOK_SECRET
-        webhook_signature = request.headers.get('X-Razorpay-Signature', '')
+        signature = request.headers.get('X-Razorpay-Signature', '')
 
-        try:
-            generated_signature = hmac.new(
-                key=webhook_secret.encode(),
-                msg=request.body,
-                digestmod=hashlib.sha256
-            ).hexdigest()
+        # Verify webhook signature
+        generated_signature = hmac.new(
+            key=webhook_secret.encode(),
+            msg=request.body,
+            digestmod=hashlib.sha256
+        ).hexdigest()
 
-            if generated_signature != webhook_signature:
-                print("[WEBHOOK] Invalid signature — possible fake request")
-                return Response({"error": "Invalid signature"}, status=400)
-        except Exception as e:
-            print(f"[WEBHOOK] Signature error: {e}")
-            return Response({"error": "Signature error"}, status=400)
+        if generated_signature != signature:
+            return Response({"error": "Invalid signature"}, status=400)
 
-        # Step 2: Parse event
-        try:
-            payload = json.loads(request.body)
-        except json.JSONDecodeError:
-            return Response({"error": "Invalid JSON"}, status=400)
-
+        payload = json.loads(request.body)
         event = payload.get('event')
-        print(f"[WEBHOOK] Received event: {event}")
 
-        # Step 3: Handle payment.captured
+        print(f"[WEBHOOK] Event: {event}")
+
         if event == 'payment.captured':
-            payment_entity = payload.get('payload', {}).get('payment', {}).get('entity', {})
-            razorpay_payment_id = payment_entity.get('id')
-            razorpay_order_id = payment_entity.get('order_id')
-            notes = payment_entity.get('notes', {})
+            payment = payload['payload']['payment']['entity']
+
+            payment_id = payment.get('id')
+            notes = payment.get('notes', {})
 
             show_id = notes.get('show_id')
-            seat_ids_str = notes.get('seat_ids', '')
+            seat_ids = [int(s) for s in notes.get('seat_ids', '').split(',') if s]
             user_id = notes.get('user_id')
 
-            if not all([show_id, seat_ids_str, user_id]):
-                print("[WEBHOOK] Missing notes data")
-                return Response({"status": "ok"})
+            if Booking.objects.filter(transaction_id=payment_id).exists():
+                return Response({"status": "already exists"})
 
-            # Check if booking already exists (created by frontend verify)
-            if Booking.objects.filter(transaction_id=razorpay_payment_id).exists():
-                print(f"[WEBHOOK] Booking already exists for payment {razorpay_payment_id}")
-                return Response({"status": "ok"})
+            User = get_user_model()
+            user = User.objects.get(id=user_id)
 
-            # Create booking if not exists (fallback for browser crash cases)
-            try:
-                seat_ids = [int(sid) for sid in seat_ids_str.split(',') if sid.strip()]
-                from django.contrib.auth import get_user_model
-                User = get_user_model()
-                user = User.objects.get(id=int(user_id))
+            total_amount = payment.get('amount', 0) / 100
 
-                # Calculate total amount from Razorpay (in paise, convert to rupees)
-                total_amount = payment_entity.get('amount', 0) / 100
+            with transaction.atomic():
+                if Booking.objects.filter(
+                    show_id=show_id,
+                    status='Booked',
+                    seats__in=seat_ids
+                ).exists():
+                    return Response({"status": "seats taken"})
 
-                with transaction.atomic():
-                    already_booked = Booking.objects.filter(
-                        show_id=show_id,
-                        status='Booked',
-                        seats__in=seat_ids
-                    ).exists()
+                booking = Booking.objects.create(
+                    user=user,
+                    show_id=show_id,
+                    total_amount=total_amount,
+                    status='Booked',
+                    transaction_id=payment_id,
+                )
+                booking.seats.set(seat_ids)
 
-                    if already_booked:
-                        print(f"[WEBHOOK] Seats already booked for show {show_id}")
-                        return Response({"status": "ok"})
-
-                    booking = Booking.objects.create(
-                        user=user,
-                        show_id=show_id,
-                        total_amount=total_amount,
-                        status='Booked',
-                        transaction_id=razorpay_payment_id,
-                    )
-                    booking.seats.set(seat_ids)
-                    booking.save()
-
-                print(f"[WEBHOOK] Booking {booking.id} created via webhook for payment {razorpay_payment_id}")
-                send_booking_confirmation(booking)
-
-            except Exception as e:
-                print(f"[WEBHOOK] Error creating booking: {e}")
-
-        # Step 4: Handle payment.failed
-        elif event == 'payment.failed':
-            payment_entity = payload.get('payload', {}).get('payment', {}).get('entity', {})
-            print(f"[WEBHOOK] Payment failed: {payment_entity.get('id')} — releasing any pending seats")
-            # Pending bookings are auto-released by release_expired_pending_bookings()
-            # so no action needed here
+            print(f"[WEBHOOK] Booking created: {booking.id}")
+            send_booking_confirmation(booking)
 
         return Response({"status": "ok"})
