@@ -35,6 +35,10 @@ class ScreenViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         return Screen.objects.all()
+        theater_id = self.request.query_params.get('theater')
+        if theater_id:
+            queryset = queryset.filter(theater_id=theater_id)
+        return queryset
 
     def get_permissions(self):
         if self.request.method in ['GET', 'HEAD', 'OPTIONS']:
@@ -42,6 +46,7 @@ class ScreenViewSet(viewsets.ModelViewSet):
         return [IsAuthenticated()]
 
     def create(self, request, *args, **kwargs):
+        print("CREATE SCREEN DATA:", request.data)
         response = super().create(request, *args, **kwargs)
         screen_id = response.data['id']
         screen = Screen.objects.get(id=screen_id)
