@@ -34,7 +34,7 @@ class ScreenViewSet(viewsets.ModelViewSet):
     serializer_class = ScreenSerializer
 
     def get_queryset(self):
-        return Screen.objects.all()
+        queryset = Screen.objects.all()
         theater_id = self.request.query_params.get('theater')
         if theater_id:
             queryset = queryset.filter(theater_id=theater_id)
