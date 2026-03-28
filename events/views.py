@@ -10,7 +10,18 @@ class EventViewSet(viewsets.ModelViewSet):
     serializer_class = EventSerializer
 
     def get_queryset(self):
-        queryset = Event.objects.all().order_by('id')
+        user = self.request.user
+
+        # Venue owners see only their own events (all statuses)
+        if hasattr(user, 'role') and user.is_authenticated and user.role == 'VENUE_OWNER':
+            queryset = Event.objects.filter(created_by=user).order_by('id')
+        # Admins see everything
+        elif hasattr(user, 'role') and user.is_authenticated and user.role == 'Admin':
+            queryset = Event.objects.all().order_by('id')
+        # Everyone else (customers, anonymous) only sees approved events
+        else:
+            queryset = Event.objects.filter(status='approved').order_by('id')
+
         city = self.request.query_params.get('city')
         if city:
             queryset = queryset.filter(

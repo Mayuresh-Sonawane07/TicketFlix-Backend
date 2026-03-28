@@ -305,6 +305,14 @@ class AdminEventActionView(APIView):
             event.admin_note = ''
             event.save()
             return Response({'message': f'Event "{event.title}" restored to pending.'})
+        
+        elif action == 'unflag':
+            event.status     = 'approved'   # unflagging → goes back to approved
+            event.admin_note = ''
+            event.reviewed_by = request.user
+            event.reviewed_at = timezone.now()
+            event.save()
+            return Response({'message': f'Event "{event.title}" unflagged and approved.'})
 
         elif action == 'delete':
             title = event.title
