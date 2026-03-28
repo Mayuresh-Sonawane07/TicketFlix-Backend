@@ -93,6 +93,20 @@ class LoginView(APIView):
                     {"error": user.ban_reason or "Your account has been banned. Contact support."},
                     status=status.HTTP_403_FORBIDDEN
                 )
+            
+            if user.is_suspended:
+                from django.utils import timezone
+                if user.suspended_until and user.suspended_until > timezone.now():
+                    return Response(
+                        {"error": f"Your account is suspended until {user.suspended_until.strftime('%d %b %Y, %I:%M %p')}."},
+                        status=status.HTTP_403_FORBIDDEN
+                    )
+                else:
+                    # Suspension expired — auto-lift it
+                    user.is_suspended = False
+                    user.suspended_until = None
+                    user.save()
+
             if user.role == 'VENUE_OWNER' and not user.is_approved:
                 return Response(
                     {"error": "Your venue owner account is pending admin approval. You will be notified once approved."},

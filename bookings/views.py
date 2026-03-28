@@ -163,6 +163,8 @@ class BookingViewSet(viewsets.ModelViewSet):
     def create(self, request, *args, **kwargs):
         if request.user.role != "Customer":
             return Response({"error": "Only customers can book tickets."}, status=status.HTTP_403_FORBIDDEN)
+        if request.user.is_banned:
+            return Response({"error": "Your account has been banned."}, status=status.HTTP_403_FORBIDDEN)
         seat_ids = request.data.get('seats', [])
         show_id = request.data.get('show')
         if not seat_ids or not show_id:

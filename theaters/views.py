@@ -83,7 +83,11 @@ class ShowViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         from django.utils import timezone
-        queryset = Show.objects.filter(show_time__gte=timezone.now())
+        queryset = Show.objects.filter(
+            show_time__gte=timezone.now(),
+            is_cancelled=False,              # hide cancelled shows
+            event__status='approved'         # only shows for approved events
+        )
         event_id = self.request.query_params.get('event')
         city = self.request.query_params.get('city')
         if event_id:
