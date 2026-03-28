@@ -45,7 +45,7 @@ class Show(models.Model):
     screen = models.ForeignKey(Screen, related_name='shows', on_delete=models.CASCADE)
     show_time = models.DateTimeField()
     price = models.DecimalField(max_digits=8, decimal_places=2, default=0)
-
+    is_cancelled = models.BooleanField(default=False)
     def __str__(self):
         return f"{self.event.title} at {self.screen.theater.name} ({self.show_time.strftime('%Y-%m-%d %H:%M')})"
 

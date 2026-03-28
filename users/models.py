@@ -18,6 +18,7 @@ class CustomUserManager(BaseUserManager):
         extra_fields.setdefault('is_staff', True)
         extra_fields.setdefault('is_superuser', True)
         extra_fields.setdefault('role', 'Admin')
+        extra_fields.setdefault('is_approved', True)
         return self.create_user(email, password, **extra_fields)
 
 
@@ -36,6 +37,24 @@ class User(AbstractUser):
     is_phone_verified = models.BooleanField(default=False)
     otp_code = models.CharField(max_length=6, blank=True, null=True)
 
+    # ── Admin control fields ──────────────────────────────
+    # Venue owners must be approved before accessing the dashboard
+    is_approved = models.BooleanField(
+        default=False,
+        help_text='Venue owners must be approved by admin before access.'
+    )
+    is_banned = models.BooleanField(
+        default=False,
+        help_text='Banned users cannot log in at all.'
+    )
+    is_suspended = models.BooleanField(
+        default=False,
+        help_text='Suspended users can log in but have limited access.'
+    )
+    ban_reason = models.TextField(blank=True, null=True)
+    suspended_until = models.DateTimeField(blank=True, null=True)
+    joined_at = models.DateTimeField(auto_now_add=True, null=True)
+
     USERNAME_FIELD = 'email'
     REQUIRED_FIELDS = []
     objects = CustomUserManager()
@@ -43,22 +62,32 @@ class User(AbstractUser):
     def __str__(self):
         return self.email
 
+    @property
+    def can_access_venue_dashboard(self):
+        """Venue owners need approval; Admins always have access."""
+        if self.role == 'Admin':
+            return True
+        if self.role == 'VENUE_OWNER':
+            return self.is_approved and not self.is_banned
+        return False
+
 
 class OTPVerification(models.Model):
     phone_number = models.CharField(max_length=15)
     otp = models.CharField(max_length=6)
     name = models.CharField(max_length=100)
     email = models.EmailField()
-    password = models.CharField(max_length=255)  # stored hashed
+    password = models.CharField(max_length=255)
     role = models.CharField(max_length=20, default='Customer')
     created_at = models.DateTimeField(auto_now_add=True)
     is_used = models.BooleanField(default=False)
 
     def is_expired(self):
-        return (timezone.now() - self.created_at).seconds > 300  # 5 minutes
+        return (timezone.now() - self.created_at).seconds > 300
 
     def __str__(self):
         return f"{self.phone_number} - {self.otp}"
+
 
 class PasswordResetOTP(models.Model):
     email = models.EmailField()
@@ -67,7 +96,37 @@ class PasswordResetOTP(models.Model):
     is_used = models.BooleanField(default=False)
 
     def is_expired(self):
-        return (timezone.now() - self.created_at).seconds > 300  # 5 minutes
+        return (timezone.now() - self.created_at).seconds > 300
 
     def __str__(self):
         return f"{self.email} - {self.otp}"
+
+
+class Notification(models.Model):
+    """Platform-wide notifications sent by Admin."""
+    TYPE_CHOICES = (
+        ('announcement', 'Announcement'),
+        ('alert',        'Alert'),
+        ('maintenance',  'Maintenance'),
+        ('event',        'Event Alert'),
+    )
+    TARGET_CHOICES = (
+        ('all',          'All Users'),
+        ('customers',    'Customers Only'),
+        ('venue_owners', 'Venue Owners Only'),
+    )
+    title      = models.CharField(max_length=255)
+    message    = models.TextField()
+    notif_type = models.CharField(max_length=20, choices=TYPE_CHOICES, default='announcement')
+    target     = models.CharField(max_length=20, choices=TARGET_CHOICES, default='all')
+    created_by = models.ForeignKey(
+        'users.User', on_delete=models.SET_NULL, null=True, related_name='sent_notifications'
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    is_active  = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"[{self.notif_type}] {self.title}"

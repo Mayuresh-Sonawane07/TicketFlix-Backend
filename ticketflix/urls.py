@@ -10,5 +10,6 @@ urlpatterns = [
     path('api/theaters/', include('theaters.urls')),
     path('api/bookings/', include('bookings.urls')),
     path('api/payments/', include('payments.urls')),
+    path('api/admin-panel/', include('adminpanel.urls')),
     re_path(r'^media/(?P<path>.*)$', serve, {'document_root': settings.MEDIA_ROOT}),
 ]

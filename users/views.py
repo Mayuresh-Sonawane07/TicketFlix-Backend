@@ -87,6 +87,17 @@ class LoginView(APIView):
                     {"error": "Invalid email or password."},
                     status=status.HTTP_401_UNAUTHORIZED
                 )
+            
+            if user.is_banned:
+                return Response(
+                    {"error": user.ban_reason or "Your account has been banned. Contact support."},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+            if user.role == 'VENUE_OWNER' and not user.is_approved:
+                return Response(
+                    {"error": "Your venue owner account is pending admin approval. You will be notified once approved."},
+                    status=status.HTTP_403_FORBIDDEN
+                )
             tokens = get_tokens_for_user(user)
             return Response({
                 "token": tokens['access'],
@@ -254,6 +265,11 @@ class GoogleLoginView(APIView):
             if created:
                 user.set_unusable_password()
                 user.save()
+            if user.is_banned:
+                return Response(
+                    {"error": user.ban_reason or "Your account has been banned."},
+                    status=status.HTTP_403_FORBIDDEN
+                )
             tokens = get_tokens_for_user(user)
             return Response({
                 'token': tokens['access'],
