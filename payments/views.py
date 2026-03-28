@@ -14,6 +14,8 @@ from bookings.models import Booking
 from bookings.serializers import BookingSerializer
 from bookings.views import send_booking_confirmation
 from theaters.models import Show
+from theaters.models import Seat
+
 
 client = razorpay.Client(
     auth=(settings.RAZORPAY_KEY_ID, settings.RAZORPAY_KEY_SECRET)
@@ -46,7 +48,17 @@ class CreateOrderView(APIView):
             return Response({"error": "Seats already booked."}, status=400)
 
         num_seats = len(seat_ids)
-        ticket_amount = float(show.price) * num_seats
+        seats = Seat.objects.filter(id__in=seat_ids, screen=show.screen)
+        ticket_amount = 0.0
+        for seat in seats:
+            if seat.category == 'Silver':
+                ticket_amount += float(show.screen.silver_price)
+            elif seat.category == 'Gold':
+                ticket_amount += float(show.screen.gold_price)
+            elif seat.category == 'Platinum':
+                ticket_amount += float(show.screen.platinum_price)
+
+        ticket_amount = round(ticket_amount, 2)
         convenience_fee = round(ticket_amount * settings.CONVENIENCE_FEE_PERCENT / 100, 2)
         total_amount = round(ticket_amount + convenience_fee, 2)
 
