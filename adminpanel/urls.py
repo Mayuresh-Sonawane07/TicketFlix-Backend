@@ -1,8 +1,3 @@
-"""
-Add to your main urls.py:
-    path('api/admin-panel/', include('admin_urls')),
-OR place this file in your project root and include it.
-"""
 from django.urls import path
 from . import views as v
 

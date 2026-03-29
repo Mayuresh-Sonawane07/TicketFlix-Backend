@@ -87,13 +87,13 @@ class LoginView(APIView):
                     {"error": "Invalid email or password."},
                     status=status.HTTP_401_UNAUTHORIZED
                 )
-            
+
             if user.is_banned:
                 return Response(
                     {"error": user.ban_reason or "Your account has been banned. Contact support."},
                     status=status.HTTP_403_FORBIDDEN
                 )
-            
+
             if user.is_suspended:
                 from django.utils import timezone
                 if user.suspended_until and user.suspended_until > timezone.now():
@@ -102,7 +102,6 @@ class LoginView(APIView):
                         status=status.HTTP_403_FORBIDDEN
                     )
                 else:
-                    # Suspension expired — auto-lift it
                     user.is_suspended = False
                     user.suspended_until = None
                     user.save()
@@ -292,3 +291,35 @@ class GoogleLoginView(APIView):
             })
         except ValueError:
             return Response({'error': 'Invalid Google token'}, status=400)
+
+
+# ── User-facing Notifications ─────────────────────────────────────────────────
+
+class UserNotificationsView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        from users.models import Notification
+        user = request.user
+
+        # Fetch active notifications, filter by target role
+        qs = Notification.objects.filter(is_active=True).order_by('-created_at')[:50]
+
+        result = []
+        for n in qs:
+            if n.target == 'all':
+                result.append(n)
+            elif n.target == 'customers' and user.role == 'Customer':
+                result.append(n)
+            elif n.target == 'venue_owners' and user.role == 'VENUE_OWNER':
+                result.append(n)
+
+        data = [{
+            'id':         n.id,
+            'title':      n.title,
+            'message':    n.message,
+            'type':       n.notif_type,
+            'created_at': n.created_at,
+        } for n in result]
+
+        return Response(data)
