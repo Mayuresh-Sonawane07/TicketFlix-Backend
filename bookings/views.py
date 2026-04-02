@@ -3,7 +3,6 @@ from rest_framework.response import Response
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from django.db import transaction
-from django.core.mail import send_mail
 from django.conf import settings
 import qrcode
 import base64
@@ -11,6 +10,9 @@ from io import BytesIO
 from .models import Booking
 from .serializers import BookingSerializer
 from users.services import send_email_oauth2
+
+
+# ─── Seat lock cleanup ────────────────────────────────────────────────────────
 
 def release_expired_pending_bookings():
     from django.utils import timezone
@@ -25,26 +27,60 @@ def release_expired_pending_bookings():
         print(f"[SEAT LOCK] Releasing {count} expired pending bookings")
         expired.delete()
 
+
+# ─── QR generation ───────────────────────────────────────────────────────────
+
 def generate_qr_base64(booking):
-    verify_url = f"{settings.FRONTEND_URL}/verify/{booking.id}?token={booking.qr_token}"
-    qr = qrcode.QRCode(version=2, error_correction=qrcode.constants.ERROR_CORRECT_H, box_size=6, border=2)
+    verify_url = (
+        f"{settings.FRONTEND_URL}/verify/{booking.id}"
+        f"?token={booking.qr_token}"
+    )
+    qr = qrcode.QRCode(
+        version=2,
+        error_correction=qrcode.constants.ERROR_CORRECT_H,
+        box_size=6,
+        border=2,
+    )
     qr.add_data(verify_url)
     qr.make(fit=True)
-    img = qr.make_image(fill_color="#000000", back_color="#ffffff")
+    img    = qr.make_image(fill_color="#000000", back_color="#ffffff")
     buffer = BytesIO()
     img.save(buffer, format='PNG')
     return base64.b64encode(buffer.getvalue()).decode('utf-8'), verify_url
 
 
+# ─── Razorpay refund ─────────────────────────────────────────────────────────
+
+def process_razorpay_refund(payment_id: str, amount_paise: int):
+    """
+    Triggers a full refund for the given Razorpay payment_id.
+    amount_paise = total_amount * 100  (Razorpay uses smallest currency unit).
+    """
+    try:
+        import razorpay
+        client = razorpay.Client(
+            auth=(settings.RAZORPAY_KEY_ID, settings.RAZORPAY_KEY_SECRET)
+        )
+        refund = client.payment.refund(payment_id, {"amount": amount_paise})
+        print(f"[REFUND] Success — payment {payment_id} refund id {refund.get('id')}")
+        return True
+    except Exception as e:
+        print(f"[REFUND ERROR] payment {payment_id}: {e}")
+        return False
+
+
+# ─── Emails ───────────────────────────────────────────────────────────────────
+
 def send_booking_confirmation(booking):
     try:
-        show = booking.show
-        event = show.event
-        screen = show.screen
-        theater = screen.theater
+        show         = booking.show
+        event        = show.event
+        screen       = show.screen
+        theater      = screen.theater
         seat_numbers = ', '.join([s.seat_number for s in booking.seats.all()])
-        show_time = show.show_time.strftime('%A, %d %B %Y at %I:%M %p')
+        show_time    = show.show_time.strftime('%A, %d %B %Y at %I:%M %p')
         qr_base64, verify_url = generate_qr_base64(booking)
+
         subject = f'Booking Confirmed - {event.title} | TicketFlix #{booking.id}'
         html_message = f"""<!DOCTYPE html>
 <html><head><meta charset="utf-8"></head>
@@ -82,7 +118,7 @@ def send_booking_confirmation(booking):
 <p style="margin:0;color:#fff;font-size:14px;font-weight:bold;">{seat_numbers}</p></div></td>
 <td width="33%" style="padding-left:8px;"><div style="background:#1e1e2e;border:1px solid #2a2a3a;border-radius:8px;padding:14px;text-align:center;">
 <p style="margin:0 0 4px;color:#6b7280;font-size:10px;text-transform:uppercase;">Amount Paid</p>
-<p style="margin:0;color:#dc2626;font-size:16px;font-weight:bold;">Rs.{booking.total_amount}</p></div></td>
+<p style="margin:0;color:#dc2626;font-size:16px;font-weight:bold;">₹{booking.total_amount}</p></div></td>
 </tr></table>
 <table width="100%" style="margin-bottom:24px;"><tr>
 <td align="center" style="background:#1e1e2e;border:1px solid #2a2a3a;border-radius:10px;padding:24px;">
@@ -97,20 +133,35 @@ def send_booking_confirmation(booking):
 </td></tr>
 </table></td></tr></table>
 </body></html>"""
-        plain_message = f"Booking Confirmed - {event.title}\nBooking #{booking.id}\nShow: {show_time}\nVenue: {theater.name}, {theater.city}\nSeats: {seat_numbers}\nAmount: Rs.{booking.total_amount}\nVerify: {verify_url}"
+        plain_message = (
+            f"Booking Confirmed - {event.title}\n"
+            f"Booking #{booking.id}\n"
+            f"Show: {show_time}\n"
+            f"Venue: {theater.name}, {theater.city}\n"
+            f"Seats: {seat_numbers}\n"
+            f"Amount: ₹{booking.total_amount}\n"
+            f"Verify: {verify_url}"
+        )
         send_email_oauth2(booking.user.email, subject, plain_message, html_message)
         print(f"[EMAIL] Confirmation sent to {booking.user.email}")
     except Exception as e:
         print(f"[EMAIL ERROR] {e}")
 
 
-def send_cancellation_email(booking):
+def send_cancellation_email(booking, refund_triggered: bool = False):
     try:
-        show = booking.show
-        event = show.event
-        theater = show.screen.theater
+        show         = booking.show
+        event        = show.event
+        theater      = show.screen.theater
         seat_numbers = ', '.join([s.seat_number for s in booking.seats.all()])
-        show_time = show.show_time.strftime('%A, %d %B %Y at %I:%M %p')
+        show_time    = show.show_time.strftime('%A, %d %B %Y at %I:%M %p')
+
+        refund_note = (
+            "Your refund has been initiated and will reflect in 5–7 business days."
+            if refund_triggered
+            else "If you paid online, please contact support for refund assistance."
+        )
+
         subject = f'Booking Cancelled - {event.title} | TicketFlix #{booking.id}'
         html_message = f"""<!DOCTYPE html>
 <html><head><meta charset="utf-8"></head>
@@ -130,10 +181,10 @@ def send_cancellation_email(booking):
 <tr><td style="padding:20px 24px;">
 <h2 style="margin:0 0 4px;color:#9ca3af;font-size:20px;text-decoration:line-through;">{event.title}</h2>
 <p style="margin:4px 0 0;color:#6b7280;">{show_time} | {theater.name}, {theater.city}</p>
-<p style="margin:4px 0 0;color:#6b7280;">Seats: {seat_numbers} | Booking #{booking.id} | Rs.{booking.total_amount}</p>
+<p style="margin:4px 0 0;color:#6b7280;">Seats: {seat_numbers} | Booking #{booking.id} | ₹{booking.total_amount}</p>
 </td></tr></table>
 <div style="background:#1e1a14;border:1px solid #78350f;border-radius:8px;padding:16px;">
-<p style="margin:0;color:#fcd34d;font-size:13px;">Refund will be processed within 5-7 business days.</p>
+<p style="margin:0;color:#fcd34d;font-size:13px;">{refund_note}</p>
 </div>
 </td></tr>
 <tr><td style="background:#0f0f17;padding:20px 32px;border-radius:0 0 12px 12px;border:1px solid #2a2a3a;border-top:none;text-align:center;">
@@ -141,78 +192,137 @@ def send_cancellation_email(booking):
 </td></tr>
 </table></td></tr></table>
 </body></html>"""
-        plain_message = f"Booking Cancelled - {event.title}\nBooking #{booking.id}\nSeats: {seat_numbers}\nRefund within 5-7 business days."
+        plain_message = (
+            f"Booking Cancelled - {event.title}\n"
+            f"Booking #{booking.id}\n"
+            f"Seats: {seat_numbers}\n"
+            f"{refund_note}"
+        )
         send_email_oauth2(booking.user.email, subject, plain_message, html_message)
         print(f"[EMAIL] Cancellation sent to {booking.user.email}")
     except Exception as e:
         print(f"[EMAIL ERROR] {e}")
 
 
+# ─── ViewSet ──────────────────────────────────────────────────────────────────
+
 class BookingViewSet(viewsets.ModelViewSet):
-    queryset = Booking.objects.all()
+    queryset         = Booking.objects.all()
     serializer_class = BookingSerializer
     permission_classes = [IsAuthenticated]
     pagination_class = None
 
     def get_queryset(self):
         user = self.request.user
-        if user.role == "Admin":
+        if user.role == 'Admin':
             return Booking.objects.all()
         return Booking.objects.filter(user=user)
 
     def create(self, request, *args, **kwargs):
-        if request.user.role != "Customer":
-            return Response({"error": "Only customers can book tickets."}, status=status.HTTP_403_FORBIDDEN)
+        if request.user.role != 'Customer':
+            return Response(
+                {'error': 'Only customers can book tickets.'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
         if request.user.is_banned:
-            return Response({"error": "Your account has been banned."}, status=status.HTTP_403_FORBIDDEN)
+            return Response(
+                {'error': 'Your account has been banned.'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
         seat_ids = request.data.get('seats', [])
-        show_id = request.data.get('show')
+        show_id  = request.data.get('show')
         if not seat_ids or not show_id:
-            return Response({"error": "Show and seats are required."}, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {'error': 'Show and seats are required.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         with transaction.atomic():
-            existing = Booking.objects.filter(show_id=show_id, status='Booked', seats__in=seat_ids)
-            if existing.exists():
-                return Response({'error': 'One or more seats are already booked.'}, status=status.HTTP_400_BAD_REQUEST)
+            if Booking.objects.filter(
+                show_id=show_id, status='Booked', seats__in=seat_ids
+            ).exists():
+                return Response(
+                    {'error': 'One or more seats are already booked.'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
             request.data['status'] = 'Pending'
-            request.data['user'] = request.user.id
+            request.data['user']   = request.user.id
             return super().create(request, *args, **kwargs)
 
+    # ── Analytics for venue owner ─────────────────────────────────────────────
     @action(detail=False, methods=['get'])
     def venue_analytics(self, request):
-        user = request.user
-        if user.role != 'VENUE_OWNER':
-            return Response({"error": "Only venue owners can access analytics."}, status=status.HTTP_403_FORBIDDEN)
-        bookings = Booking.objects.filter(
-            show__event__created_by=user
-        ).select_related('show', 'show__event', 'show__screen', 'show__screen__theater', 'user').prefetch_related('seats')
+        if request.user.role != 'VENUE_OWNER':
+            return Response(
+                {'error': 'Only venue owners can access analytics.'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        bookings = (
+            Booking.objects
+            .filter(show__event__created_by=request.user)
+            .select_related(
+                'show', 'show__event',
+                'show__screen', 'show__screen__theater',
+                'user',
+            )
+            .prefetch_related('seats')
+        )
         serializer = BookingSerializer(bookings, many=True)
         return Response(serializer.data)
 
+    # ── Confirm payment (legacy / fallback) ───────────────────────────────────
     @action(detail=True, methods=['post'])
     def confirm_payment(self, request, pk=None):
         booking = self.get_object()
         if booking.user != request.user:
-            return Response({"error": "Unauthorized."}, status=status.HTTP_403_FORBIDDEN)
+            return Response({'error': 'Unauthorized.'}, status=status.HTTP_403_FORBIDDEN)
         if booking.status == 'Booked':
-            return Response({"message": "Already confirmed."})
-        booking.status = 'Booked'
-        booking.transaction_id = request.data.get('transaction_id', f"TXN-{booking.id}")
+            return Response({'message': 'Already confirmed.'})
+        booking.status         = 'Booked'
+        booking.transaction_id = request.data.get(
+            'transaction_id', f'TXN-{booking.id}'
+        )
         booking.save()
         send_booking_confirmation(booking)
-        return Response({"message": "Payment confirmed! Booking successful.", "booking": BookingSerializer(booking).data})
+        return Response({
+            'message': 'Payment confirmed! Booking successful.',
+            'booking': BookingSerializer(booking).data,
+        })
 
+    # ── Cancel booking + real Razorpay refund ────────────────────────────────
     @action(detail=True, methods=['post'])
     def cancel(self, request, pk=None):
         booking = self.get_object()
         if booking.user != request.user:
-            return Response({"error": "You can only cancel your own booking."}, status=status.HTTP_403_FORBIDDEN)
-        if booking.is_cancellable():
-            booking.status = 'Cancelled'
-            booking.save()
-            send_cancellation_email(booking)
-            return Response({'status': 'Booking cancelled successfully.'})
-        return Response({'error': 'Cannot cancel. Less than 24 hours to showtime or already cancelled.'}, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {'error': 'You can only cancel your own booking.'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        if not booking.is_cancellable():
+            return Response(
+                {'error': 'Cannot cancel. Less than 24 hours to showtime or already cancelled.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
+        booking.status = 'Cancelled'
+        booking.save()
+
+        # ── Trigger real Razorpay refund ──────────────────────────────────────
+        # transaction_id is stored as the Razorpay payment_id (starts with "pay_")
+        refund_triggered = False
+        if booking.transaction_id and booking.transaction_id.startswith('pay_'):
+            amount_paise     = int(float(booking.total_amount) * 100)
+            refund_triggered = process_razorpay_refund(
+                booking.transaction_id, amount_paise
+            )
+
+        send_cancellation_email(booking, refund_triggered=refund_triggered)
+
+        return Response({
+            'status':          'Booking cancelled successfully.',
+            'refund_initiated': refund_triggered,
+        })
+
+    # ── QR verification (used by /scan-ticket page) ───────────────────────────
     @action(detail=True, methods=['get', 'post'], permission_classes=[AllowAny])
     def verify(self, request, pk=None):
         token = request.query_params.get('token')
@@ -226,44 +336,48 @@ class BookingViewSet(viewsets.ModelViewSet):
 
         if booking.status != 'Booked':
             return Response({
-                'valid': False,
-                'reason': f'Booking is {booking.status}',
-                'status': booking.status,
-                'checked_in': booking.checked_in,
+                'valid':           False,
+                'reason':          f'Booking is {booking.status}',
+                'status':          booking.status,
+                'checked_in':      booking.checked_in,
                 'checked_in_time': booking.checked_in_time,
             })
 
-        # POST = mark as used
+        # POST — mark as checked in
         if request.method == 'POST':
             if booking.checked_in:
                 return Response({
-                    'valid': False,
-                    'already_used': True,
-                    'reason': 'Ticket already used',
+                    'valid':           False,
+                    'already_used':    True,
+                    'reason':          'Ticket already used',
                     'checked_in_time': booking.checked_in_time,
-                    'event': booking.show.event.title,
-                    'show_time': booking.show.show_time,
-                    'seats': [s.seat_number for s in booking.seats.all()],
+                    'event':           booking.show.event.title,
+                    'show_time':       booking.show.show_time,
+                    'seats':           [s.seat_number for s in booking.seats.all()],
                 })
             from django.utils import timezone
-            booking.checked_in = True
+            booking.checked_in      = True
             booking.checked_in_time = timezone.now()
             booking.save()
-            return Response({'valid': True, 'marked_used': True, 'checked_in_time': booking.checked_in_time})
+            return Response({
+                'valid':           True,
+                'marked_used':     True,
+                'checked_in_time': booking.checked_in_time,
+            })
 
-        # GET = just verify
+        # GET — just verify, return full details
         return Response({
-            'valid': True,
-            'status': booking.status,
-            'checked_in': booking.checked_in,
-            'checked_in_time': booking.checked_in_time,
-            'event': booking.show.event.title,
-            'event_type': booking.show.event.event_type,
-            'show_time': booking.show.show_time,
-            'venue': booking.show.screen.theater.name,
-            'city': booking.show.screen.theater.city,
-            'screen': f"Screen {booking.show.screen.screen_number}",
-            'seats': [s.seat_number for s in booking.seats.all()],
-            'customer': booking.user.get_full_name() or booking.user.email,
-            'total_amount': str(booking.total_amount),
+            'valid':          True,
+            'status':         booking.status,
+            'checked_in':     booking.checked_in,
+            'checked_in_time':booking.checked_in_time,
+            'event':          booking.show.event.title,
+            'event_type':     booking.show.event.event_type,
+            'show_time':      booking.show.show_time,
+            'venue':          booking.show.screen.theater.name,
+            'city':           booking.show.screen.theater.city,
+            'screen':         f"Screen {booking.show.screen.screen_number}",
+            'seats':          [s.seat_number for s in booking.seats.all()],
+            'customer':       booking.user.get_full_name() or booking.user.email,
+            'total_amount':   str(booking.total_amount),
         })
