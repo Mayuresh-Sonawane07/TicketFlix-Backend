@@ -54,6 +54,7 @@ class User(AbstractUser):
     ban_reason = models.TextField(blank=True, null=True)
     suspended_until = models.DateTimeField(blank=True, null=True)
     joined_at = models.DateTimeField(auto_now_add=True, null=True)
+    is_deleted = models.BooleanField(default=False)
 
     USERNAME_FIELD = 'email'
     REQUIRED_FIELDS = []
@@ -130,3 +131,12 @@ class Notification(models.Model):
 
     def __str__(self):
         return f"[{self.notif_type}] {self.title}"
+    
+class AdminLog(models.Model):
+    admin = models.ForeignKey('users.User', on_delete=models.CASCADE)
+    action = models.CharField(max_length=100)
+    target = models.CharField(max_length=100)
+    timestamp = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.admin.email} - {self.action} - {self.target}"

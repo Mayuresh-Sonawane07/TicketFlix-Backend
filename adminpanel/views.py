@@ -8,19 +8,28 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from rest_framework import status
+from rest_framework.throttling import UserRateThrottle
 
+class AdminThrottle(UserRateThrottle):
+    scope = 'admin'
 
 # ── Permission helper ─────────────────────────────────────────────────────────
 
 class IsAdmin(IsAuthenticated):
     def has_permission(self, request, view):
-        return super().has_permission(request, view) and request.user.role == 'Admin'
+        return (
+            super().has_permission(request, view)
+            and request.user.role == 'Admin'
+            and request.user.is_active
+            and not request.user.is_banned
+        )
 
 
 # ── Dashboard stats ───────────────────────────────────────────────────────────
 
 class AdminDashboardView(APIView):
     permission_classes = [IsAdmin]
+    throttle_classes = [AdminThrottle]
 
     def get(self, request):
         from django.contrib.auth import get_user_model
@@ -98,6 +107,7 @@ class AdminDashboardView(APIView):
 
 class AdminVenueOwnersView(APIView):
     permission_classes = [IsAdmin]
+    throttle_classes = [AdminThrottle]
 
     def get(self, request):
         from django.contrib.auth import get_user_model
@@ -130,21 +140,34 @@ class AdminVenueOwnersView(APIView):
 
 class AdminApproveVenueOwnerView(APIView):
     permission_classes = [IsAdmin]
+    throttle_classes = [AdminThrottle]
 
     def post(self, request, user_id):
         from django.contrib.auth import get_user_model
         User = get_user_model()
         try:
             user = User.objects.get(id=user_id, role='VENUE_OWNER')
+            if user.role == 'Admin':
+                return Response({'error': 'Cannot modify admin users'}, status=403)
         except User.DoesNotExist:
             return Response({'error': 'Venue owner not found.'}, status=404)
 
         action = request.data.get('action')  # approve | reject | ban | unban | suspend
+        ALLOWED_ACTIONS = ['approve', 'reject', 'ban', 'unban', 'suspend']
+
+        if action not in ALLOWED_ACTIONS:
+            return Response({'error': 'Invalid action'}, status=400)
 
         if action == 'approve':
             user.is_approved = True
             user.is_banned   = False
             user.save()
+            from users.models import AdminLog
+            AdminLog.objects.create(
+                admin=request.user,
+                action='APPROVE_VENUE_OWNER',
+                target=user.email
+            )
             return Response({'message': f'{user.email} approved.'})
 
         elif action == 'reject':
@@ -177,15 +200,18 @@ class AdminApproveVenueOwnerView(APIView):
 
 class AdminUsersView(APIView):
     permission_classes = [IsAdmin]
+    throttle_classes = [AdminThrottle]
 
     def get(self, request):
         from django.contrib.auth import get_user_model
         User = get_user_model()
         role = request.query_params.get('role')
-        qs   = User.objects.exclude(role='Admin')
+        qs = User.objects.exclude(role='Admin').filter(is_deleted=False)
         if role:
             qs = qs.filter(role=role)
-
+        
+        paginator = PageNumberPagination()
+        result_page = paginator.paginate_queryset(qs.order_by('-joined_at'), request)
         data = [{
             'id':          u.id,
             'name':        u.first_name or u.email,
@@ -197,45 +223,70 @@ class AdminUsersView(APIView):
             'is_suspended':u.is_suspended,
             'ban_reason':  u.ban_reason,
             'joined_at':   u.joined_at,
-        } for u in qs.order_by('-joined_at')]
-        return Response(data)
+        } for u in result_page]
+        return paginator.get_paginated_response(data)
 
 
 class AdminUserActionView(APIView):
     permission_classes = [IsAdmin]
+    throttle_classes = [AdminThrottle]
 
     def post(self, request, user_id):
         from django.contrib.auth import get_user_model
         User = get_user_model()
         try:
             user = User.objects.get(id=user_id)
+            if user.role == 'Admin':
+                return Response({'error': 'Cannot modify admin users'}, status=403)
         except User.DoesNotExist:
             return Response({'error': 'User not found.'}, status=404)
 
         action = request.data.get('action')  # ban | unban | suspend | delete
+        ALLOWED_ACTIONS = ['ban', 'unban', 'suspend', 'delete']
+
+        if action not in ALLOWED_ACTIONS:
+            return Response({'error': 'Invalid action'}, status=400)
 
         if action == 'ban':
             user.is_banned  = True
             user.ban_reason = request.data.get('reason', '')
             user.save()
+            from users.models import AdminLog
+            AdminLog.objects.create(
+                admin=request.user,
+                action='BAN_USER',
+                target=user.email
+            )
             return Response({'message': f'{user.email} banned.'})
 
         elif action == 'unban':
             user.is_banned  = False
             user.ban_reason = ''
             user.save()
+            from users.models import AdminLog
+            AdminLog.objects.create(
+                admin=request.user,
+                action='UNBAN_USER',
+                target=user.email
+            )
             return Response({'message': f'{user.email} unbanned.'})
 
         elif action == 'suspend':
-            user.is_suspended    = True
+            user.is_suspended = True
             user.suspended_until = request.data.get('until')
             user.save()
             return Response({'message': f'{user.email} suspended.'})
 
         elif action == 'delete':
-            email = user.email
-            user.delete()
-            return Response({'message': f'{email} deleted.'})
+            user.is_deleted = True
+            user.save()
+            from users.models import AdminLog
+            AdminLog.objects.create(
+                admin=request.user,
+                action='DELETE_USER',
+                target=user.email
+            )
+            return Response({'message': f'{user.email} soft deleted.'})
 
         return Response({'error': 'Invalid action.'}, status=400)
 
@@ -244,6 +295,7 @@ class AdminUserActionView(APIView):
 
 class AdminEventsView(APIView):
     permission_classes = [IsAdmin]
+    throttle_classes = [AdminThrottle]
 
     def get(self, request):
         from events.models import Event
@@ -266,6 +318,7 @@ class AdminEventsView(APIView):
 
 class AdminEventActionView(APIView):
     permission_classes = [IsAdmin]
+    throttle_classes = [AdminThrottle]
 
     def post(self, request, event_id):
         from events.models import Event
@@ -275,6 +328,10 @@ class AdminEventActionView(APIView):
             return Response({'error': 'Event not found.'}, status=404)
 
         action = request.data.get('action')  # approve | flag | remove | restore
+        ALLOWED_ACTIONS = ['approve', 'flag', 'remove', 'restore', 'unflag', 'delete']
+
+        if action not in ALLOWED_ACTIONS:
+            return Response({'error': 'Invalid action'}, status=400)
 
         if action == 'approve':
             event.status      = 'approved'
@@ -326,6 +383,7 @@ class AdminEventActionView(APIView):
 
 class AdminShowsView(APIView):
     permission_classes = [IsAdmin]
+    throttle_classes = [AdminThrottle]
 
     def get(self, request):
         from theaters.models import Show
@@ -344,6 +402,7 @@ class AdminShowsView(APIView):
 
 class AdminShowActionView(APIView):
     permission_classes = [IsAdmin]
+    throttle_classes = [AdminThrottle]
 
     def post(self, request, show_id):
         from theaters.models import Show
@@ -353,6 +412,10 @@ class AdminShowActionView(APIView):
             return Response({'error': 'Show not found.'}, status=404)
 
         action = request.data.get('action')  # cancel | reschedule | delete
+        ALLOWED_ACTIONS = ['cancel', 'reschedule', 'delete']
+
+        if action not in ALLOWED_ACTIONS:
+            return Response({'error': 'Invalid action'}, status=400)
 
         if action == 'cancel':
             show.is_cancelled = True
@@ -378,6 +441,7 @@ class AdminShowActionView(APIView):
 
 class AdminBookingsView(APIView):
     permission_classes = [IsAdmin]
+    throttle_classes = [AdminThrottle]
 
     def get(self, request):
         from bookings.models import Booking
@@ -404,6 +468,7 @@ class AdminBookingsView(APIView):
 
 class AdminCancelBookingView(APIView):
     permission_classes = [IsAdmin]
+    throttle_classes = [AdminThrottle]
 
     def post(self, request, booking_id):
         from bookings.models import Booking
@@ -421,7 +486,7 @@ class AdminCancelBookingView(APIView):
 
 class AdminRevenueView(APIView):
     permission_classes = [IsAdmin]
-
+    throttle_classes = [AdminThrottle]
     def get(self, request):
         from bookings.models import Booking
 
@@ -436,10 +501,11 @@ class AdminRevenueView(APIView):
 
         # Daily revenue last 30 days
         thirty_days_ago = timezone.now() - timezone.timedelta(days=30)
+        from django.db.models.functions import TruncDate
         daily = (
             Booking.objects
             .filter(status='Booked', booking_time__gte=thirty_days_ago)
-            .extra(select={'day': "DATE(booking_time)"})
+            .annotate(day=TruncDate('booking_time'))
             .values('day')
             .annotate(revenue=Sum('total_amount'), bookings=Count('id'))
             .order_by('day')
@@ -461,6 +527,7 @@ class AdminRevenueView(APIView):
 
 class AdminFraudView(APIView):
     permission_classes = [IsAdmin]
+    throttle_classes = [AdminThrottle]
 
     def get(self, request):
         from bookings.models import Booking
@@ -509,8 +576,9 @@ class AdminFraudView(APIView):
 
 # ── Notifications ─────────────────────────────────────────────────────────────
 
-class AdminNotificationsView(APIView):
+class AdminNotificationsListCreateView(APIView):
     permission_classes = [IsAdmin]
+    throttle_classes = [AdminThrottle]
 
     def get(self, request):
         from users.models import Notification
@@ -536,6 +604,10 @@ class AdminNotificationsView(APIView):
             created_by = request.user,
         )
         return Response({'message': 'Notification sent.', 'id': n.id}, status=201)
+
+class AdminNotificationDeleteView(APIView):
+    permission_classes = [IsAdmin]
+    throttle_classes = [AdminThrottle]
 
     def delete(self, request, notif_id=None):
         from users.models import Notification

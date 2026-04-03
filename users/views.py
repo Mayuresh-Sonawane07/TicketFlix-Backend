@@ -242,7 +242,7 @@ class ForgotPasswordView(APIView):
 
 
 class ResetPasswordView(APIView):
-    throttle_classes = [LoginThrottle]
+    throttle_classes = [OTPThrottle]
 
     def post(self, request):
         serializer = ResetPasswordSerializer(data=request.data)

@@ -32,6 +32,6 @@ urlpatterns = [
     path('fraud/',                        v.AdminFraudView.as_view(),              name='admin-fraud'),
 
     # Notifications
-    path('notifications/',                v.AdminNotificationsView.as_view(),      name='admin-notifications'),
-    path('notifications/<int:notif_id>/', v.AdminNotificationsView.as_view(),      name='admin-notification-delete'),
+    path('notifications/',                v.AdminNotificationsListCreateView.as_view(),      name='admin-notifications'),
+    path('notifications/<int:notif_id>/', v.AdminNotificationDeleteView.as_view(),      name='admin-notification-delete'),
 ]
