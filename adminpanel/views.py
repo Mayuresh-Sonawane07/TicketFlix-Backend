@@ -206,7 +206,7 @@ class AdminUsersView(APIView):
         from django.contrib.auth import get_user_model
         User = get_user_model()
         role = request.query_params.get('role')
-        qs = User.objects.exclude(role='Admin').filter(is_deleted=False)
+        qs = User.objects.exclude(role='Admin').exclude(is_deleted=True)
         if role:
             qs = qs.filter(role=role)
         
