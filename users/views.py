@@ -66,7 +66,7 @@ class VerifyOTPView(APIView):
                     "message": "Registration successful!",
                     "token": tokens['access'],
                     "refresh": tokens['refresh'],
-                    "user": UserSerializer(user).data
+                    "user": {"id": user.id, "first_name": user.first_name, "role": user.role}
                 },
                 status=status.HTTP_201_CREATED
             )
@@ -115,7 +115,7 @@ class LoginView(APIView):
             return Response({
                 "token": tokens['access'],
                 "refresh": tokens['refresh'],
-                "user": UserSerializer(user).data
+                "user": {"id": user.id, "first_name": user.first_name, "role": user.role}
             })
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
@@ -287,7 +287,7 @@ class GoogleLoginView(APIView):
             return Response({
                 'token': tokens['access'],
                 'refresh': tokens['refresh'],
-                'user': UserSerializer(user).data
+                "user": {"id": user.id, "first_name": user.first_name, "role": user.role}
             })
         except ValueError:
             return Response({'error': 'Invalid Google token'}, status=400)
