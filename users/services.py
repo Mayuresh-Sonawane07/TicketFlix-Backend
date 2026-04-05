@@ -1,6 +1,6 @@
 import random
 import threading
-from django.core.mail import EmailMultiAlternatives
+import resend
 from django.conf import settings
 
 
@@ -29,25 +29,19 @@ def _build_otp_html(name: str, otp: str) -> str:
     </div>
     """
 
-
 def _send_email_task(email: str, otp: str, name: str):
     try:
-        subject = "Your TicketFlix OTP Code"
-        text_body = f"Hi {name},\n\nYour OTP is: {otp}\n\nValid for 5 minutes. Do not share it.\n\n— TicketFlix"
-        html_body = _build_otp_html(name, otp)
-
-        msg = EmailMultiAlternatives(
-            subject=subject,
-            body=text_body,
-            from_email=settings.DEFAULT_FROM_EMAIL,
-            to=[email],
-        )
-        msg.attach_alternative(html_body, "text/html")
-        msg.send(fail_silently=False)
+        resend.api_key = settings.RESEND_API_KEY
+        resend.Emails.send({
+            "from": "TicketFlix <onboarding@resend.dev>",
+            "to": [email],
+            "subject": "Your TicketFlix OTP Code",
+            "text": f"Hi {name},\n\nYour OTP is: {otp}\n\nValid for 5 minutes. Do not share it.\n\n— TicketFlix",
+            "html": _build_otp_html(name, otp),
+        })
         print(f"[EMAIL] OTP sent to {email}")
     except Exception as e:
         print(f"[EMAIL ERROR] Failed to send OTP to {email}: {e}")
-
 
 def send_otp_email(email: str, otp: str, name: str) -> bool:
     thread = threading.Thread(target=_send_email_task, args=(email, otp, name))
@@ -56,22 +50,13 @@ def send_otp_email(email: str, otp: str, name: str) -> bool:
     return True
 
 
-# ── Alias kept so bookings/views.py import doesn't break ──────────────────────
+
 def send_email_oauth2(to_email: str, subject: str, body: str, html_body: str = None):
-    """
-    Drop-in replacement for the old Gmail OAuth sender.
-    Now uses Django's SMTP backend instead.
-    """
-    try:
-        msg = EmailMultiAlternatives(
-            subject=subject,
-            body=body,
-            from_email=settings.DEFAULT_FROM_EMAIL,
-            to=[to_email],
-        )
-        if html_body:
-            msg.attach_alternative(html_body, "text/html")
-        msg.send(fail_silently=False)
-    except Exception as e:
-        print(f"[EMAIL ERROR] {e}")
-        raise
+    resend.api_key = settings.RESEND_API_KEY
+    resend.Emails.send({
+        "from": "TicketFlix <onboarding@resend.dev>",
+        "to": [to_email],
+        "subject": subject,
+        "text": body,
+        "html": html_body or body,
+    })
