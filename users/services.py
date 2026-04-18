@@ -1,6 +1,7 @@
 import random
 import threading
 import resend
+import requests
 from django.conf import settings
 
 
@@ -31,14 +32,45 @@ def _build_otp_html(name: str, otp: str) -> str:
 
 def _send_email_task(email: str, otp: str, name: str):
     try:
-        resend.api_key = settings.RESEND_API_KEY
-        resend.Emails.send({
-            "from": "TicketFlix <onboarding@resend.dev>",
-            "to": [email],
-            "subject": "Your TicketFlix OTP Code",
-            "text": f"Hi {name},\n\nYour OTP is: {otp}\n\nValid for 5 minutes. Do not share it.\n\n— TicketFlix",
-            "html": _build_otp_html(name, otp),
-        })
+        # Get fresh access token using refresh token
+        token_response = requests.post(
+            "https://oauth2.googleapis.com/token",
+            data={
+                "client_id": settings.GMAIL_CLIENT_ID,
+                "client_secret": settings.GMAIL_CLIENT_SECRET,
+                "refresh_token": settings.GMAIL_REFRESH_TOKEN,
+                "grant_type": "refresh_token",
+            },
+            timeout=10,
+        )
+        token_response.raise_for_status()
+        access_token = token_response.json()["access_token"]
+
+        # Build RFC 2822 email message
+        import base64
+        from email.mime.multipart import MIMEMultipart
+        from email.mime.text import MIMEText
+
+        msg = MIMEMultipart("alternative")
+        msg["From"] = f"TicketFlix <{settings.GMAIL_CLIENT_EMAIL}>"
+        msg["To"] = email
+        msg["Subject"] = "Your TicketFlix OTP Code"
+        msg.attach(MIMEText(f"Hi {name},\n\nYour OTP is: {otp}\n\nValid for 5 minutes.", "plain"))
+        msg.attach(MIMEText(_build_otp_html(name, otp), "html"))
+
+        raw = base64.urlsafe_b64encode(msg.as_bytes()).decode()
+
+        # Send via Gmail API
+        send_response = requests.post(
+            "https://gmail.googleapis.com/gmail/v1/users/me/messages/send",
+            headers={
+                "Authorization": f"Bearer {access_token}",
+                "Content-Type": "application/json",
+            },
+            json={"raw": raw},
+            timeout=10,
+        )
+        send_response.raise_for_status()
         print(f"[EMAIL] OTP sent to {email}")
     except Exception as e:
         print(f"[EMAIL ERROR] Failed to send OTP to {email}: {e}")

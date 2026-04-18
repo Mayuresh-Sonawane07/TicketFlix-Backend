@@ -21,7 +21,7 @@ router = DefaultRouter()
 router.register(r'', UserViewSet)
 
 urlpatterns = [
-    path('register/',         RegisterInitView.as_view(),      name='register'),
+    path('register/',         RegisterInitView.as_view(),       name='register'),
     path('verify-otp/',       VerifyOTPView.as_view(),          name='verify-otp'),
     path('resend-otp/',       ResendOTPView.as_view(),          name='resend-otp'),
     path('login/',            LoginView.as_view(),              name='login'),

@@ -186,14 +186,15 @@ MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 # EMAIL → Gmail OAuth2 (no SMTP)
 # ─────────────────────────────────────────
 EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
-EMAIL_HOST = 'smtp.gmail.com'
-EMAIL_PORT = 587
-EMAIL_USE_TLS = True
+# EMAIL_HOST = 'smtp.gmail.com'
+# EMAIL_PORT = 587
+# EMAIL_USE_TLS = True
 EMAIL_USE_SSL = False
-EMAIL_HOST_USER = 'mayureshsonawane1526@gmail.com'
-EMAIL_HOST_PASSWORD = os.environ.get('EMAIL_HOST_PASSWORD', '')
-DEFAULT_FROM_EMAIL = 'TicketFlix <mayureshsonawane1526@gmail.com>'
+# EMAIL_HOST_USER = 'mayureshsonawane1526@gmail.com'
+# EMAIL_HOST_PASSWORD = os.environ.get('EMAIL_HOST_PASSWORD', '')
+GMAIL_CLIENT_EMAIL = os.environ.get('EMAIL_HOST_USER', 'mayureshsonawane1526@gmail.com')
 RESEND_API_KEY = os.environ.get('RESEND_API_KEY', '')
+DEFAULT_FROM_EMAIL = 'TicketFlix <mayureshsonawane1526@gmail.com>'
 
 # Gmail REST API (used by services.py instead of SMTP)
 GMAIL_CLIENT_ID = os.environ.get('GOOGLE_CLIENT_ID', '')
