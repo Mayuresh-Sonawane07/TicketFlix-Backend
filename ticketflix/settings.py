@@ -18,13 +18,13 @@ DEBUG = os.environ.get('DEBUG', 'False') == 'True'
 
 ALLOWED_HOSTS = os.environ.get('ALLOWED_HOSTS', 'localhost').split(',') + [
     'localhost', '127.0.0.1', '0.0.0.0',
-    '.replit.dev', '.repl.co',
+    '.onrender.com',
     'ticketflix-ten.vercel.app',
     'web-production-cf420.up.railway.app',
 ]
 
 CSRF_TRUSTED_ORIGINS = [
-    "https://*.replit.dev",
+    "https://*.onrender.com",
     "https://ticketflix-ten.vercel.app",
     "https://web-production-cf420.up.railway.app",
 ]
@@ -165,7 +165,8 @@ CORS_ALLOW_CREDENTIALS = True
 # ─────────────────────────────────────────
 STATIC_URL = 'static/'
 STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
-# STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
+STATICFILES_STORAGE = 'whitenoise.storage.CompressedStaticFilesStorage'
+
 
 # ─────────────────────────────────────────
 # MEDIA FILES → CLOUDINARY
