@@ -1,13 +1,33 @@
-node_modules
-dist
-.DS_Store
-server/public
+# Frontend
+node_modules/
+dist/
 vite.config.ts.*
-*.tar.gzdb_backup.json
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Backend - Python
 venv/
 __pycache__/
 *.pyc
+
+# Database
 db.sqlite3
+db_backup.json
+*.tar.gz
+
+# Environment variables (CRITICAL)
 .env
+.env.*
+
+# Django media & static
 media/
 staticfiles/
+
+# Logs
+*.log
+
+# IDE
+.vscode/
+.idea/
