@@ -31,3 +31,5 @@ staticfiles/
 # IDE
 .vscode/
 .idea/
+
+attached_assets/
