@@ -198,8 +198,8 @@ RESEND_API_KEY = os.environ.get('RESEND_API_KEY', '')
 DEFAULT_FROM_EMAIL = 'TicketFlix <mayureshsonawane1526@gmail.com>'
 
 # Gmail REST API (used by services.py instead of SMTP)
-GMAIL_CLIENT_ID = os.environ.get('GOOGLE_CLIENT_ID', '')
-GMAIL_CLIENT_SECRET = os.environ.get('GOOGLE_CLIENT_SECRET', '')
+GMAIL_CLIENT_ID = os.environ.get('GMAIL_CLIENT_ID', '')
+GMAIL_CLIENT_SECRET = os.environ.get('GMAIL_CLIENT_SECRET', '')
 GMAIL_REFRESH_TOKEN = os.environ.get('GMAIL_REFRESH_TOKEN', '')
 
 # ─────────────────────────────────────────
