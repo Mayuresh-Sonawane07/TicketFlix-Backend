@@ -2,6 +2,7 @@ import razorpay
 import hmac
 import hashlib
 import json
+import requests
 from django.conf import settings
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -202,3 +203,47 @@ class TestRazorpayView(APIView):
             })
         except Exception as e:
             return Response({"reachable": False, "error": str(e)})
+        
+class TestGmailTokenView(APIView):
+    """
+    TEMPORARY DEBUG VIEW — remove after fixing.
+    Hit GET /api/debug/gmail-token/ to see exactly what Google returns.
+    """
+    permission_classes = [AllowAny]
+ 
+    def get(self, request):
+        data = {
+            "client_id": settings.GMAIL_CLIENT_ID,
+            "client_secret": settings.GMAIL_CLIENT_SECRET,
+            "refresh_token": settings.GMAIL_REFRESH_TOKEN,
+            "grant_type": "refresh_token",
+        }
+ 
+        # Show what values are actually loaded (mask secrets partially)
+        debug_info = {
+            "client_id_set": bool(settings.GMAIL_CLIENT_ID),
+            "client_id_prefix": settings.GMAIL_CLIENT_ID[:20] + "..." if settings.GMAIL_CLIENT_ID else "EMPTY",
+            "client_secret_set": bool(settings.GMAIL_CLIENT_SECRET),
+            "client_secret_prefix": settings.GMAIL_CLIENT_SECRET[:6] + "..." if settings.GMAIL_CLIENT_SECRET else "EMPTY",
+            "refresh_token_set": bool(settings.GMAIL_REFRESH_TOKEN),
+            "refresh_token_prefix": settings.GMAIL_REFRESH_TOKEN[:10] + "..." if settings.GMAIL_REFRESH_TOKEN else "EMPTY",
+            "email_host_user": settings.GMAIL_CLIENT_EMAIL,
+        }
+ 
+        try:
+            response = requests.post(
+                "https://oauth2.googleapis.com/token",
+                data=data,
+                timeout=10,
+            )
+            google_response = response.json()
+            return Response({
+                "debug_info": debug_info,
+                "google_status_code": response.status_code,
+                "google_response": google_response,
+            })
+        except Exception as e:
+            return Response({
+                "debug_info": debug_info,
+                "error": str(e),
+            })
