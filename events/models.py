@@ -37,6 +37,7 @@ class Event(models.Model):
         limit_choices_to={'role': 'VENUE_OWNER'}
     )
     image      = models.ImageField(upload_to=event_image_upload_path, null=True, blank=True)
+    trailer_url = models.URLField(blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     # ── Admin moderation ──────────────────────────────────
