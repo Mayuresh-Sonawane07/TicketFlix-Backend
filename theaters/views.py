@@ -5,7 +5,7 @@ from rest_framework.permissions import IsAuthenticated, AllowAny
 from django.db import transaction
 from .models import Theater, Screen, Show, Seat
 from .serializers import TheaterSerializer, ScreenSerializer, ShowSerializer, SeatSerializer
-
+from django.db.models import Count
 
 class TheaterViewSet(viewsets.ModelViewSet):
     queryset = Theater.objects.all()
@@ -111,14 +111,30 @@ class ShowViewSet(viewsets.ModelViewSet):
             booking__show=show,
             booking__status__in=['Booked', 'Pending']
         ).values_list('id', flat=True))
+        seat_booking_counts = Seat.objects.filter(
+            booking__show=show,
+            booking__status='Booked'
+        ).values('id').annotate(count=Count('booking'))
+
+        seat_count_map = {s['id']: s['count'] for s in seat_booking_counts}
 
         result = []
         for seat in all_seats:
+            count = seat_count_map.get(seat.id, 0)
+        
+            if count >= 5:
+                demand = 'high'
+            elif count >= 2:
+                demand = 'medium'
+            else:
+                demand = 'low'
+        
             result.append({
                 'id': seat.id,
                 'seat_number': seat.seat_number,
                 'category': seat.category,
                 'is_booked': seat.id in booked_seat_ids,
+                'demand': demand,
             })
         return Response(result)
 
