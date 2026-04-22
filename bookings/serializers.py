@@ -6,11 +6,21 @@ class BookingSerializer(serializers.ModelSerializer):
     user_email    = serializers.SerializerMethodField()
     show_details  = serializers.SerializerMethodField()
     qr_code_base64 = serializers.SerializerMethodField()   # ← NEW: base64 QR for PDF
+    seats = serializers.SerializerMethodField()
 
     class Meta:
         model  = Booking
         fields = '__all__'
         read_only_fields = ('status', 'booking_time')
+
+    def get_seats(self, obj):
+        return [
+            {
+                "seat_number": s.seat_number,
+                "category": s.category
+            }
+            for s in obj.seats.all()
+        ]
 
     # ── user email ────────────────────────────────────────
     def get_user_email(self, obj):
@@ -23,6 +33,8 @@ class BookingSerializer(serializers.ModelSerializer):
             event   = show.event
             screen  = show.screen
             theater = screen.theater
+            request = self.context.get("request")
+            
             return {
                 'id':           show.id,
                 'show_time':    show.show_time,
@@ -34,12 +46,13 @@ class BookingSerializer(serializers.ModelSerializer):
                     'gold':     float(screen.gold_price),
                     'platinum': float(screen.platinum_price),
                 },
-                'event': {
-                    'id':         event.id,
-                    'title':      event.title,
-                    'event_type': event.event_type,
-                    'language':   event.language,
-                    'genre':      event.genre,
+                "event": {
+                    "id": event.id,
+                    "title": event.title,
+                    "event_type": event.event_type,
+                    "language": event.language,
+                    "genre": event.genre,
+                    "image": request.build_absolute_uri(event.image.url) if event.image else None
                 },
             }
         except Exception:
