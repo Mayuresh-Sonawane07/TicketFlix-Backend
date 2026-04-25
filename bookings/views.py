@@ -266,8 +266,14 @@ class BookingViewSet(viewsets.ModelViewSet):
             )
             .prefetch_related('seats')
         )
-        serializer = BookingSerializer(bookings, many=True)
+        serializer = BookingSerializer(bookings, many=True, context={'request': request})
         return Response(serializer.data)
+    
+        # Inject event_id directly so frontend can match without show_details
+        for i, booking in enumerate(bookings):
+            data[i]['event_id'] = booking.show.event.id  # type: ignore
+    
+        return Response(data)
 
     # ── Confirm payment (legacy / fallback) ───────────────────────────────────
     @action(detail=True, methods=['post'])
