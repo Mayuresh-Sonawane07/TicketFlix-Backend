@@ -10,6 +10,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework import status
 from rest_framework.throttling import UserRateThrottle
 from rest_framework.pagination import PageNumberPagination
+from users.models import SupportTicket, SupportMessage
 
 class AdminThrottle(UserRateThrottle):
     scope = 'admin'
@@ -619,3 +620,104 @@ class AdminNotificationDeleteView(APIView):
             except Notification.DoesNotExist:
                 return Response({'error': 'Not found.'}, status=404)
         return Response({'error': 'notif_id required.'}, status=400)
+    
+# ── Support Tickets (Admin) ─────────────────────────────
+
+class AdminSupportTicketListView(APIView):
+    permission_classes = [IsAdmin]
+
+    def get(self, request):
+        status_filter = request.query_params.get('status')
+
+        qs = SupportTicket.objects.select_related('user').all().order_by('-updated_at')
+
+        if status_filter:
+            qs = qs.filter(status=status_filter)
+
+        data = [{
+            "id": t.id,
+            "subject": t.subject,
+            "status": t.status,
+            "created_at": t.created_at,
+            "updated_at": t.updated_at,
+            "user_email": t.user.email,
+            "user_name": t.user.first_name or t.user.email,
+            "messages": []
+        } for t in qs]
+
+        return Response(data)
+
+
+class AdminSupportTicketDetailView(APIView):
+    permission_classes = [IsAdmin]
+
+    def get(self, request, ticket_id):
+        try:
+            t = SupportTicket.objects.select_related('user').get(id=ticket_id)
+        except SupportTicket.DoesNotExist:
+            return Response({'error': 'Ticket not found'}, status=404)
+
+        messages = SupportMessage.objects.filter(ticket=t).order_by('created_at')
+
+        return Response({
+            "id": t.id,
+            "subject": t.subject,
+            "status": t.status,
+            "created_at": t.created_at,
+            "updated_at": t.updated_at,
+            "user_email": t.user.email,
+            "user_name": t.user.first_name or t.user.email,
+            "messages": [{
+                "id": m.id,
+                "message": m.message,
+                "is_from_user": m.is_from_user,
+                "created_at": m.created_at,
+                "admin_name": m.admin_name,
+            } for m in messages]
+        })
+
+
+class AdminSupportTicketReplyView(APIView):
+    permission_classes = [IsAdmin]
+
+    def post(self, request, ticket_id):
+        try:
+            ticket = SupportTicket.objects.get(id=ticket_id)
+        except SupportTicket.DoesNotExist:
+            return Response({'error': 'Ticket not found'}, status=404)
+
+        msg = request.data.get('message')
+
+        m = SupportMessage.objects.create(
+            ticket=ticket,
+            message=msg,
+            is_from_user=False,
+            admin_name=request.user.first_name or "Admin"
+        )
+
+        ticket.status = 'in_progress'
+        ticket.save()
+
+        return Response({
+            "id": m.id,
+            "message": m.message,
+            "is_from_user": False,
+            "created_at": m.created_at,
+            "admin_name": m.admin_name,
+        })
+
+
+class AdminSupportTicketUpdateView(APIView):
+    permission_classes = [IsAdmin]
+
+    def patch(self, request, ticket_id):
+        try:
+            t = SupportTicket.objects.get(id=ticket_id)
+        except SupportTicket.DoesNotExist:
+            return Response({'error': 'Ticket not found'}, status=404)
+
+        status_val = request.data.get('status')
+        t.status = status_val
+        t.save()
+
+        return Response({"status": t.status})
