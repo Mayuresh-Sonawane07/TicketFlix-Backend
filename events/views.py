@@ -8,6 +8,7 @@ from .permissions import IsVenueOwner
 
 class EventViewSet(viewsets.ModelViewSet):
     serializer_class = EventSerializer
+    pagination_class = None  
 
     def get_queryset(self):
         user = self.request.user
