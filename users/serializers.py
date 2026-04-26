@@ -249,7 +249,7 @@ class SupportTicketCreateSerializer(serializers.Serializer):
             is_from_user=True,
         )
         # Re-fetch with messages
-        return SupportTicket.objects.prefetch_related('messages_sender').get(pk=ticket.pk)
+        return SupportTicket.objects.prefetch_related('messages__sender').get(pk=ticket.pk)
 
 
 class SupportReplySerializer(serializers.Serializer):

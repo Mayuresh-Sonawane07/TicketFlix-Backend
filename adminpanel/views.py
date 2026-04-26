@@ -672,7 +672,9 @@ class AdminSupportTicketDetailView(APIView):
                 "message": m.message,
                 "is_from_user": m.is_from_user,
                 "created_at": m.created_at,
-                "admin_name": m.admin_name,
+                "admin_name": (
+                    m.sender.first_name if m.sender else "Admin"
+                ),
             } for m in messages]
         })
 
@@ -706,9 +708,9 @@ class AdminSupportTicketReplyView(APIView):
 
         m = SupportMessage.objects.create(
             ticket=ticket,
+            sender=request.user,   # 🔥 IMPORTANT
             message=msg,
-            is_from_user=False,
-            admin_name=request.user.first_name or "Admin"
+            is_from_user=False
         )
 
         ticket.status = 'in_progress'
@@ -719,21 +721,7 @@ class AdminSupportTicketReplyView(APIView):
             "message": m.message,
             "is_from_user": False,
             "created_at": m.created_at,
-            "admin_name": m.admin_name,
+            "admin_name": (
+                m.sender.first_name if m.sender else "Admin"
+            ),
         })
-
-
-class AdminSupportTicketUpdateView(APIView):
-    permission_classes = [IsAdmin]
-
-    def patch(self, request, ticket_id):
-        try:
-            t = SupportTicket.objects.get(id=ticket_id)
-        except SupportTicket.DoesNotExist:
-            return Response({'error': 'Ticket not found'}, status=404)
-
-        status_val = request.data.get('status')
-        t.status = status_val
-        t.save()
-
-        return Response({"status": t.status})
