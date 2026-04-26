@@ -355,6 +355,7 @@ class SupportTicketListCreateView(APIView):
         return Response(serializer.data)
 
     def post(self, request):
+        from .models import SupportMessage
         user = request.user
         # Admins don't raise tickets
         if user.role == 'Admin':
@@ -366,6 +367,18 @@ class SupportTicketListCreateView(APIView):
         serializer = SupportTicketCreateSerializer(data=request.data)
         if serializer.is_valid():
             ticket = serializer.save(user=user)
+
+            # 🔥 CREATE FIRST MESSAGE
+            message_text = request.data.get('message')
+
+            if message_text:
+                SupportMessage.objects.create(
+                    ticket=ticket,
+                    sender=user,
+                    message=message_text,
+                    is_from_user=True
+                )
+
             return Response(
                 SupportTicketSerializer(ticket).data,
                 status=status.HTTP_201_CREATED
