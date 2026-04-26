@@ -676,7 +676,23 @@ class AdminSupportTicketDetailView(APIView):
             } for m in messages]
         })
 
+    # ✅ ADD THIS
+    def patch(self, request, ticket_id):
+        try:
+            t = SupportTicket.objects.get(id=ticket_id)
+        except SupportTicket.DoesNotExist:
+            return Response({'error': 'Ticket not found'}, status=404)
 
+        status_val = request.data.get('status')
+
+        if status_val not in ['open', 'in_progress', 'resolved', 'closed']:
+            return Response({'error': 'Invalid status'}, status=400)
+
+        t.status = status_val
+        t.save()
+
+        return Response({"status": t.status})
+    
 class AdminSupportTicketReplyView(APIView):
     permission_classes = [IsAdmin]
 
