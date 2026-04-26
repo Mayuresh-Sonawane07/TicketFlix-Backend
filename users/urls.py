@@ -15,6 +15,9 @@ from .views import (
     ResetPasswordView,
     GoogleLoginView,
     UserNotificationsView,
+    SupportTicketListCreateView,
+    SupportTicketDetailView,
+    SupportTicketReplyView,
 )
 
 router = DefaultRouter()
@@ -34,5 +37,17 @@ urlpatterns = [
     path('token/refresh/',    TokenRefreshView.as_view(),       name='token_refresh'),
     path('logout/',           TokenBlacklistView.as_view(),     name='token_blacklist'),
     path('notifications/',    UserNotificationsView.as_view(),  name='user-notifications'),
+
+    # ── Support Tickets ──────────────────────────────────────────────────────
+    path('support/tickets/',
+         SupportTicketListCreateView.as_view(),
+         name='support-ticket-list'),
+    path('support/tickets/<int:ticket_id>/',
+         SupportTicketDetailView.as_view(),
+         name='support-ticket-detail'),
+    path('support/tickets/<int:ticket_id>/reply/',
+         SupportTicketReplyView.as_view(),
+         name='support-ticket-reply'),
+
     path('',                  include(router.urls)),
 ]

@@ -38,7 +38,6 @@ class User(AbstractUser):
     otp_code = models.CharField(max_length=6, blank=True, null=True)
 
     # ── Admin control fields ──────────────────────────────
-    # Venue owners must be approved before accessing the dashboard
     is_approved = models.BooleanField(
         default=False,
         help_text='Venue owners must be approved by admin before access.'
@@ -131,7 +130,8 @@ class Notification(models.Model):
 
     def __str__(self):
         return f"[{self.notif_type}] {self.title}"
-    
+
+
 class AdminLog(models.Model):
     admin = models.ForeignKey('users.User', on_delete=models.CASCADE)
     action = models.CharField(max_length=100)
@@ -140,3 +140,48 @@ class AdminLog(models.Model):
 
     def __str__(self):
         return f"{self.admin.email} - {self.action} - {self.target}"
+
+
+# ── Support Ticket System ─────────────────────────────────────────────────────
+
+class SupportTicket(models.Model):
+    STATUS_CHOICES = (
+        ('open',        'Open'),
+        ('in_progress', 'In Progress'),
+        ('resolved',    'Resolved'),
+        ('closed',      'Closed'),
+    )
+    user       = models.ForeignKey(
+        'users.User', on_delete=models.CASCADE, related_name='support_tickets'
+    )
+    subject    = models.CharField(max_length=200)
+    status     = models.CharField(max_length=20, choices=STATUS_CHOICES, default='open')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"[{self.status}] {self.subject} — {self.user.email}"
+
+
+class SupportMessage(models.Model):
+    ticket       = models.ForeignKey(
+        SupportTicket, on_delete=models.CASCADE, related_name='messages'
+    )
+    sender       = models.ForeignKey(
+        'users.User', on_delete=models.SET_NULL, null=True, related_name='support_messages'
+    )
+    message      = models.TextField()
+    # True = sent by the ticket owner (customer/venue owner)
+    # False = sent by an admin
+    is_from_user = models.BooleanField(default=True)
+    created_at   = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['created_at']
+
+    def __str__(self):
+        direction = "User" if self.is_from_user else "Admin"
+        return f"[{direction}] Ticket #{self.ticket_id}: {self.message[:40]}"

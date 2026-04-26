@@ -16,6 +16,9 @@ from .serializers import (
     LoginSerializer,
     ForgotPasswordSerializer,
     ResetPasswordSerializer,
+    SupportTicketSerializer,
+    SupportTicketCreateSerializer,
+    SupportReplySerializer,
 )
 
 User = get_user_model()
@@ -302,7 +305,6 @@ class UserNotificationsView(APIView):
         from users.models import Notification
         user = request.user
 
-        # Fetch active notifications, filter by target role
         qs = Notification.objects.filter(is_active=True).order_by('-created_at')[:50]
 
         result = []
@@ -323,3 +325,144 @@ class UserNotificationsView(APIView):
         } for n in result]
 
         return Response(data)
+
+
+# ── Support Ticket Views ──────────────────────────────────────────────────────
+
+class SupportTicketListCreateView(APIView):
+    """
+    GET  /users/support/tickets/   → list own tickets (customers/venue owners)
+                                     OR all tickets (admin)
+    POST /users/support/tickets/   → create a new ticket (customers/venue owners only)
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        from .models import SupportTicket
+        user = request.user
+
+        if user.role == 'Admin':
+            # Admin sees all tickets, newest first, with open/in_progress first
+            tickets = SupportTicket.objects.prefetch_related('messages__sender').order_by(
+                'status', '-created_at'
+            )
+        else:
+            tickets = SupportTicket.objects.prefetch_related('messages__sender').filter(
+                user=user
+            )
+
+        serializer = SupportTicketSerializer(tickets, many=True)
+        return Response(serializer.data)
+
+    def post(self, request):
+        user = request.user
+        # Admins don't raise tickets
+        if user.role == 'Admin':
+            return Response(
+                {"detail": "Admins cannot create support tickets."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        serializer = SupportTicketCreateSerializer(data=request.data)
+        if serializer.is_valid():
+            ticket = serializer.save(user=user)
+            return Response(
+                SupportTicketSerializer(ticket).data,
+                status=status.HTTP_201_CREATED
+            )
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+class SupportTicketDetailView(APIView):
+    """
+    GET   /users/support/tickets/<id>/          → get ticket with messages
+    PATCH /users/support/tickets/<id>/          → update status (admin only)
+    """
+    permission_classes = [IsAuthenticated]
+
+    def _get_ticket(self, ticket_id, user):
+        from .models import SupportTicket
+        try:
+            ticket = SupportTicket.objects.prefetch_related('messages__sender').get(pk=ticket_id)
+        except SupportTicket.DoesNotExist:
+            return None
+
+        # Non-admins can only see their own tickets
+        if user.role != 'Admin' and ticket.user != user:
+            return None
+
+        return ticket
+
+    def get(self, request, ticket_id):
+        ticket = self._get_ticket(ticket_id, request.user)
+        if not ticket:
+            return Response({"detail": "Not found."}, status=status.HTTP_404_NOT_FOUND)
+        return Response(SupportTicketSerializer(ticket).data)
+
+    def patch(self, request, ticket_id):
+        # Only admins can change ticket status
+        if request.user.role != 'Admin':
+            return Response({"detail": "Forbidden."}, status=status.HTTP_403_FORBIDDEN)
+
+        ticket = self._get_ticket(ticket_id, request.user)
+        if not ticket:
+            return Response({"detail": "Not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        new_status = request.data.get('status')
+        valid_statuses = ('open', 'in_progress', 'resolved', 'closed')
+        if new_status and new_status in valid_statuses:
+            ticket.status = new_status
+            ticket.save()
+
+        return Response(SupportTicketSerializer(ticket).data)
+
+
+class SupportTicketReplyView(APIView):
+    """
+    POST /users/support/tickets/<id>/reply/
+    Both users and admins can reply. Determines is_from_user by role.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, ticket_id):
+        from .models import SupportTicket, SupportMessage
+        user = request.user
+
+        try:
+            ticket = SupportTicket.objects.prefetch_related('messages__sender').get(pk=ticket_id)
+        except SupportTicket.DoesNotExist:
+            return Response({"detail": "Not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        # Non-admins can only reply to their own tickets
+        if user.role != 'Admin' and ticket.user != user:
+            return Response({"detail": "Forbidden."}, status=status.HTTP_403_FORBIDDEN)
+
+        if ticket.status == 'closed':
+            return Response(
+                {"detail": "This ticket is closed and cannot receive new messages."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        serializer = SupportReplySerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        is_from_user = (user.role != 'Admin')
+
+        msg = SupportMessage.objects.create(
+            ticket=ticket,
+            sender=user,
+            message=serializer.validated_data['message'],
+            is_from_user=is_from_user,
+        )
+
+        # When admin replies, auto-move ticket to in_progress if still open
+        if not is_from_user and ticket.status == 'open':
+            ticket.status = 'in_progress'
+            ticket.save()
+
+        from .serializers import SupportMessageSerializer
+        return Response(
+            SupportMessageSerializer(msg).data,
+            status=status.HTTP_201_CREATED
+        )
